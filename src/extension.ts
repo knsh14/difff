@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { DiffExplorerProvider, DiffFile, BranchSelector, ModeSelector } from './diffExplorer';
 import { GitService } from './gitService';
 import { DiffWebviewProvider, FileDiff } from './webviewProvider';
+import { CommentService } from './commentService';
 
 export function activate(context: vscode.ExtensionContext) {
     // Check if we're in a git repository
@@ -21,6 +22,7 @@ export function activate(context: vscode.ExtensionContext) {
     
     const diffExplorerProvider = new DiffExplorerProvider(gitService);
     const diffWebviewProvider = new DiffWebviewProvider(context.extensionUri);
+    const commentService = new CommentService(context);
 
     vscode.window.registerTreeDataProvider('difff.explorer', diffExplorerProvider);
     
@@ -219,31 +221,120 @@ export function activate(context: vscode.ExtensionContext) {
                     }
                 );
                 
-                // Set up message handling for reload button
+                // Set up message handling for reload button and comments
                 panel.webview.onDidReceiveMessage(
-                    message => {
-                        if (message.command === 'reload') {
-                            // Refresh the diff view
-                            vscode.commands.executeCommand('difff.viewDiff');
-                            
-                            // Send reload complete message back to webview
-                            setTimeout(() => {
-                                panel.webview.postMessage({ command: 'reloadComplete' });
-                            }, 100);
+                    async (message) => {
+                        try {
+                            if (message.command === 'reload') {
+                                // Refresh with fresh data from git
+                                await refreshWebviewContent(true);
+                            } else if (message.command === 'addComment') {
+                                const baseRef = mode === 'working' ? 'HEAD' : diffExplorerProvider.getBaseRef();
+                                const compareRef = mode === 'working' ? 'working' : diffExplorerProvider.getCompareRef();
+                                
+                                commentService.addComment(
+                                    message.filePath,
+                                    message.lineNumber,
+                                    message.lineType,
+                                    message.content,
+                                    baseRef,
+                                    compareRef
+                                );
+                                
+                                // Regenerate webview content instead of reloading
+                                refreshWebviewContent();
+                            } else if (message.command === 'editComment') {
+                                commentService.updateComment(message.commentId, message.content);
+                                refreshWebviewContent();
+                            } else if (message.command === 'deleteComment') {
+                                commentService.deleteComment(message.commentId);
+                                refreshWebviewContent();
+                            }
+                        } catch (error: any) {
+                            vscode.window.showErrorMessage(`Comment operation failed: ${error.message}`);
                         }
                     },
                     undefined,
                     context.subscriptions
                 );
                 
-                // Set webview content
-                if (mode === 'working') {
-                    panel.webview.html = diffWebviewProvider.getWorkingDirectoryContent(fileDiffs);
-                } else {
-                    const baseRef = diffExplorerProvider.getBaseRef();
-                    const compareRef = diffExplorerProvider.getCompareRef();
-                    panel.webview.html = diffWebviewProvider.getAllDiffsContent(fileDiffs, baseRef, compareRef);
-                }
+                // Function to refresh webview content
+                const refreshWebviewContent = async (shouldRefreshData = false) => {
+                    try {
+                        let currentFileDiffs = fileDiffs;
+                        
+                        // If requested, fetch fresh diff data
+                        if (shouldRefreshData) {
+                            if (mode === 'working') {
+                                const workingFiles = await gitService.getWorkingDirectoryFiles();
+                                currentFileDiffs = [];
+                                
+                                for (const file of workingFiles) {
+                                    const content = await gitService.getWorkingDirectoryFileDiff(file.path);
+                                    currentFileDiffs.push({
+                                        path: file.path,
+                                        content: content,
+                                        additions: file.additions,
+                                        deletions: file.deletions
+                                    });
+                                }
+                            } else {
+                                const baseRef = diffExplorerProvider.getBaseRef();
+                                const compareRef = diffExplorerProvider.getCompareRef();
+                                
+                                if (baseRef && compareRef) {
+                                    const branchFiles = await gitService.getDiffFiles(baseRef, compareRef);
+                                    currentFileDiffs = [];
+                                    
+                                    for (const file of branchFiles) {
+                                        const content = await gitService.getFileDiff(baseRef, compareRef, file.path);
+                                        currentFileDiffs.push({
+                                            path: file.path,
+                                            content: content,
+                                            additions: file.additions,
+                                            deletions: file.deletions
+                                        });
+                                    }
+                                }
+                            }
+                            
+                            // Update the cached fileDiffs for future comment operations
+                            fileDiffs = currentFileDiffs;
+                        }
+                        
+                        // Get current user info for avatars
+                        const gitConfig = vscode.workspace.getConfiguration('git');
+                        const currentUser = gitConfig.get<string>('user.name') || require('os').userInfo().username || 'User';
+
+                        // Get comments for each file
+                        const commentsMap = new Map<string, any[]>();
+                        for (const file of currentFileDiffs) {
+                            if (mode === 'working') {
+                                const fileComments = commentService.getComments(file.path, 'HEAD', 'working');
+                                commentsMap.set(file.path, fileComments);
+                            } else {
+                                const baseRef = diffExplorerProvider.getBaseRef();
+                                const compareRef = diffExplorerProvider.getCompareRef();
+                                const fileComments = commentService.getComments(file.path, baseRef, compareRef);
+                                commentsMap.set(file.path, fileComments);
+                            }
+                        }
+
+                        // Set webview content
+                        if (mode === 'working') {
+                            panel.webview.html = diffWebviewProvider.getWorkingDirectoryContent(currentFileDiffs, commentsMap, currentUser);
+                        } else {
+                            const baseRef = diffExplorerProvider.getBaseRef();
+                            const compareRef = diffExplorerProvider.getCompareRef();
+                            panel.webview.html = diffWebviewProvider.getAllDiffsContent(currentFileDiffs, baseRef, compareRef, commentsMap, currentUser);
+                        }
+                    } catch (error: any) {
+                        vscode.window.showErrorMessage(`Failed to refresh webview: ${error.message}`);
+                    }
+                };
+                
+                // Initial content load
+                refreshWebviewContent();
                 
             } catch (error: any) {
                 vscode.window.showErrorMessage(`Failed to load diffs: ${error.message}`);

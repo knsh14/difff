@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { DiffComment } from './commentService';
 
 export interface FileDiff {
     path: string;
@@ -251,15 +252,15 @@ export class DiffWebviewProvider {
         return text.replace(/[&<>"']/g, m => map[m]);
     }
     
-    getAllDiffsContent(fileDiffs: FileDiff[], baseRef: string, compareRef: string): string {
-        return this.generateDiffHTML(fileDiffs, `${baseRef} → ${compareRef}`);
+    getAllDiffsContent(fileDiffs: FileDiff[], baseRef: string, compareRef: string, comments: Map<string, DiffComment[]> = new Map(), currentUser?: string): string {
+        return this.generateDiffHTML(fileDiffs, `${baseRef} → ${compareRef}`, baseRef, compareRef, comments, currentUser);
     }
     
-    getWorkingDirectoryContent(fileDiffs: FileDiff[]): string {
-        return this.generateDiffHTML(fileDiffs, 'HEAD → Working Directory');
+    getWorkingDirectoryContent(fileDiffs: FileDiff[], comments: Map<string, DiffComment[]> = new Map(), currentUser?: string): string {
+        return this.generateDiffHTML(fileDiffs, 'HEAD → Working Directory', 'HEAD', 'working', comments, currentUser);
     }
     
-    private generateDiffHTML(fileDiffs: FileDiff[], title: string): string {
+    private generateDiffHTML(fileDiffs: FileDiff[], title: string, baseRef?: string, compareRef?: string, comments: Map<string, DiffComment[]> = new Map(), currentUser?: string): string {
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -485,6 +486,303 @@ export class DiffWebviewProvider {
             color: var(--vscode-descriptionForeground);
             background: var(--vscode-editorWidget-background);
         }
+
+        /* GitHub-style Comment System */
+        .diff-line-wrapper {
+            position: relative;
+        }
+
+        .add-comment-button {
+            position: absolute;
+            left: -24px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 18px;
+            height: 18px;
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 10;
+        }
+
+        .diff-line:hover .add-comment-button {
+            opacity: 1;
+        }
+
+        .add-comment-button:hover {
+            background: var(--vscode-button-hoverBackground);
+            transform: translateY(-50%) scale(1.1);
+        }
+
+        .comment-thread-container {
+            border: 1px solid var(--vscode-editorWidget-border);
+            border-radius: 8px;
+            margin: 16px 32px;
+            background: var(--vscode-editor-background);
+            position: relative;
+        }
+
+        .comment-thread-container::before {
+            content: '';
+            position: absolute;
+            left: -8px;
+            top: 8px;
+            width: 0;
+            height: 0;
+            border-right: 8px solid var(--vscode-editorWidget-border);
+            border-top: 8px solid transparent;
+            border-bottom: 8px solid transparent;
+        }
+
+        .comment-thread-container::after {
+            content: '';
+            position: absolute;
+            left: -7px;
+            top: 8px;
+            width: 0;
+            height: 0;
+            border-right: 8px solid var(--vscode-editor-background);
+            border-top: 8px solid transparent;
+            border-bottom: 8px solid transparent;
+        }
+
+        .comment-thread-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--vscode-editorWidget-border);
+            background: var(--vscode-editorWidget-background);
+            border-radius: 8px 8px 0 0;
+            font-size: 12px;
+            color: var(--vscode-descriptionForeground);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .comment-thread-header:hover {
+            background: var(--vscode-list-hoverBackground);
+        }
+
+        .comment-thread-toggle {
+            display: inline-block;
+            margin-right: 8px;
+            transition: transform 0.2s;
+        }
+
+        .comment-thread-collapsed .comment-thread-toggle {
+            transform: rotate(-90deg);
+        }
+
+        .comment-thread-body {
+            display: block;
+        }
+
+        .comment-thread-collapsed .comment-thread-body {
+            display: none;
+        }
+
+        .comment-item {
+            padding: 16px;
+            border-bottom: 1px solid var(--vscode-editorWidget-border);
+            display: flex;
+            gap: 12px;
+        }
+
+        .comment-item:last-child {
+            border-bottom: none;
+            border-radius: 0 0 8px 8px;
+        }
+
+        .comment-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--vscode-button-background);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--vscode-button-foreground);
+            flex-shrink: 0;
+        }
+
+        .comment-body {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .comment-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+
+        .comment-author {
+            font-weight: 600;
+            color: var(--vscode-textLink-foreground);
+        }
+
+        .comment-timestamp {
+            color: var(--vscode-descriptionForeground);
+        }
+
+        .comment-content {
+            font-size: 13px;
+            line-height: 1.5;
+            color: var(--vscode-editor-foreground);
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }
+
+        .comment-actions-menu {
+            display: flex;
+            gap: 12px;
+            margin-top: 8px;
+        }
+
+        .comment-action-btn {
+            background: none;
+            border: none;
+            color: var(--vscode-descriptionForeground);
+            cursor: pointer;
+            font-size: 11px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+
+        .comment-action-btn:hover {
+            background: var(--vscode-list-hoverBackground);
+            color: var(--vscode-textLink-foreground);
+        }
+
+        .comment-form-container {
+            border: 1px solid var(--vscode-editorWidget-border);
+            border-radius: 8px;
+            margin: 16px 32px;
+            background: var(--vscode-editor-background);
+            position: relative;
+        }
+
+        .comment-form-container::before {
+            content: '';
+            position: absolute;
+            left: -8px;
+            top: 16px;
+            width: 0;
+            height: 0;
+            border-right: 8px solid var(--vscode-editorWidget-border);
+            border-top: 8px solid transparent;
+            border-bottom: 8px solid transparent;
+        }
+
+        .comment-form-container::after {
+            content: '';
+            position: absolute;
+            left: -7px;
+            top: 16px;
+            width: 0;
+            height: 0;
+            border-right: 8px solid var(--vscode-editor-background);
+            border-top: 8px solid transparent;
+            border-bottom: 8px solid transparent;
+        }
+
+        .comment-form {
+            padding: 16px;
+            display: flex;
+            gap: 12px;
+        }
+
+        .comment-form-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--vscode-button-background);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--vscode-button-foreground);
+            flex-shrink: 0;
+        }
+
+        .comment-form-body {
+            flex: 1;
+        }
+
+        .comment-textarea {
+            width: 100%;
+            min-height: 100px;
+            padding: 12px;
+            border: 1px solid var(--vscode-input-border);
+            border-radius: 6px;
+            background: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            font-family: inherit;
+            font-size: 13px;
+            line-height: 1.4;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+
+        .comment-textarea:focus {
+            outline: none;
+            border-color: var(--vscode-focusBorder);
+        }
+
+        .comment-form-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+            justify-content: flex-end;
+        }
+
+        .comment-submit-btn {
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .comment-submit-btn:hover {
+            background: var(--vscode-button-hoverBackground);
+        }
+
+        .comment-submit-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .comment-cancel-btn {
+            background: none;
+            color: var(--vscode-descriptionForeground);
+            border: 1px solid var(--vscode-input-border);
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .comment-cancel-btn:hover {
+            background: var(--vscode-list-hoverBackground);
+            border-color: var(--vscode-textLink-foreground);
+            color: var(--vscode-textLink-foreground);
+        }
     </style>
 </head>
 <body>
@@ -500,7 +798,7 @@ export class DiffWebviewProvider {
             <div class="stat-item deletions">
                 <span>-${fileDiffs.reduce((sum, f) => sum + f.deletions, 0)} deletions</span>
             </div>
-            <button class="reload-button" onclick="reloadDiff()">
+            <button class="reload-button" id="reload-diff-btn">
                 <span>↻</span>
                 <span>Reload</span>
             </button>
@@ -525,7 +823,7 @@ export class DiffWebviewProvider {
     <div class="content">
         ${fileDiffs.length === 0 ? 
             '<div class="empty-diff">No changes found between these branches</div>' :
-            fileDiffs.map(file => this.renderFileDiff(file)).join('')
+            fileDiffs.map(file => this.renderFileDiff(file, comments.get(file.path) || [], baseRef, compareRef)).join('')
         }
     </div>
     
@@ -533,42 +831,291 @@ export class DiffWebviewProvider {
         // VS Code API
         const vscode = acquireVsCodeApi();
         
-        // Smooth scroll for navigation links
-        document.querySelectorAll('.file-link').forEach(link => {
-            link.addEventListener('click', (e) => {
-                e.preventDefault();
-                const target = document.querySelector(link.getAttribute('href'));
-                if (target) {
-                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
+        // Initialize all event listeners - called immediately and after reloads
+        function initializeEventListeners() {
+            // Smooth scroll for navigation links
+            document.querySelectorAll('.file-link').forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const target = document.querySelector(link.getAttribute('href'));
+                    if (target) {
+                        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                });
             });
-        });
-        
-        // Reload functionality
-        function reloadDiff() {
-            const button = document.querySelector('.reload-button');
-            button.classList.add('loading');
-            button.innerHTML = '<span>↻</span><span>Loading...</span>';
             
-            // Send message to extension
-            vscode.postMessage({ command: 'reload' });
+            // Reload button functionality
+            const reloadBtn = document.getElementById('reload-diff-btn');
+            if (reloadBtn) {
+                reloadBtn.addEventListener('click', function() {
+                    this.classList.add('loading');
+                    this.innerHTML = '<span>↻</span><span>Loading...</span>';
+                    vscode.postMessage({ command: 'reload' });
+                });
+            }
         }
         
-        // Listen for messages from extension
+        // Initialize when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeEventListeners);
+        } else {
+            initializeEventListeners();
+        }
+        
+        // Set current user info from extension
+        const currentUserName = ${JSON.stringify(currentUser || 'User')};
+        let currentCommentThreadId = null;
+        
+        function getCurrentUserInitials() {
+            return currentUserName
+                .split(' ')
+                .map(name => name.charAt(0).toUpperCase())
+                .join('')
+                .substring(0, 2);
+        }
+        
+        function showCommentForm(filePath, lineNumber, lineType) {
+            // Remove any existing form
+            hideCommentForm();
+            
+            const targetRow = document.querySelector(\`tr[data-line-num="\${lineNumber}"][data-line-type="\${lineType}"]\`);
+            if (!targetRow) {
+                return;
+            }
+            
+            const threadId = \`\${filePath}-\${lineNumber}-\${lineType}\`;
+            currentCommentThreadId = threadId;
+            
+            const formRow = document.createElement('tr');
+            formRow.classList.add('comment-form-row');
+            formRow.innerHTML = \`
+                <td colspan="3">
+                    <div class="comment-form-container">
+                        <div class="comment-form">
+                            <div class="comment-form-avatar">\${getCurrentUserInitials()}</div>
+                            <div class="comment-form-body">
+                                <textarea class="comment-textarea" placeholder="Leave a comment" data-thread-id="\${threadId}"></textarea>
+                                <div class="comment-form-actions">
+                                    <button class="comment-cancel-btn" data-cancel-comment>Cancel</button>
+                                    <button class="comment-submit-btn" data-submit-comment data-file-path="\${filePath}" data-line-number="\${lineNumber}" data-line-type="\${lineType}">Comment</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </td>
+            \`;
+            
+            targetRow.parentNode.insertBefore(formRow, targetRow.nextSibling);
+            
+            // Focus and setup textarea
+            const textarea = formRow.querySelector('.comment-textarea');
+            textarea.focus();
+            
+            // Auto-resize textarea
+            textarea.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = Math.max(100, this.scrollHeight) + 'px';
+                
+                // Enable/disable submit button
+                const submitBtn = formRow.querySelector('.comment-submit-btn');
+                submitBtn.disabled = !this.value.trim();
+            });
+            
+            // Add event listeners for form buttons
+            formRow.querySelector('[data-cancel-comment]').addEventListener('click', hideCommentForm);
+            formRow.querySelector('[data-submit-comment]').addEventListener('click', function() {
+                const filePath = this.dataset.filePath;
+                const lineNumber = parseInt(this.dataset.lineNumber);
+                const lineType = this.dataset.lineType;
+                submitComment(filePath, lineNumber, lineType);
+            });
+        }
+        
+        function hideCommentForm() {
+            const existingForm = document.querySelector('.comment-form-row');
+            if (existingForm) {
+                existingForm.remove();
+            }
+            currentCommentThreadId = null;
+        }
+        
+        function submitComment(filePath, lineNumber, lineType) {
+            const textarea = document.querySelector('.comment-textarea');
+            const content = textarea.value.trim();
+            
+            if (!content) return;
+            
+            // Disable form while submitting
+            const submitBtn = document.querySelector('.comment-submit-btn');
+            const cancelBtn = document.querySelector('.comment-cancel-btn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Commenting...';
+            cancelBtn.disabled = true;
+            
+            vscode.postMessage({
+                command: 'addComment',
+                filePath: filePath,
+                lineNumber: lineNumber,
+                lineType: lineType,
+                content: content
+            });
+        }
+        
+        function toggleCommentThread(threadId) {
+            const container = document.querySelector(\`[data-thread-id="\${threadId}"]\`);
+            if (container) {
+                container.classList.toggle('comment-thread-collapsed');
+            }
+        }
+        
+        // Main event delegation for all clicks - this runs immediately
+        (function() {
+            document.addEventListener('click', function(event) {
+                const target = event.target;
+                
+                // Handle add comment button clicks
+                if (target.classList.contains('add-comment-button')) {
+                    event.preventDefault();
+                    const filePath = target.dataset.filePath;
+                    const lineNumber = parseInt(target.dataset.lineNumber);
+                    const lineType = target.dataset.lineType;
+                    showCommentForm(filePath, lineNumber, lineType);
+                }
+                
+                // Handle comment thread toggle
+                if (target.hasAttribute('data-toggle-thread')) {
+                    event.preventDefault();
+                    const threadId = target.dataset.toggleThread;
+                    toggleCommentThread(threadId);
+                }
+                
+                // Handle comment edit
+                if (target.hasAttribute('data-edit-comment')) {
+                    event.preventDefault();
+                    const commentId = target.dataset.editComment;
+                    editComment(commentId);
+                }
+                
+                // Handle comment delete
+                if (target.hasAttribute('data-delete-comment')) {
+                    event.preventDefault();
+                    const commentId = target.dataset.deleteComment;
+                    deleteComment(commentId);
+                }
+                
+                // Handle comment reply
+                if (target.hasAttribute('data-reply-comment')) {
+                    event.preventDefault();
+                    const commentId = target.dataset.replyComment;
+                    replyToComment(commentId);
+                }
+            });
+        })();
+        
+        function editComment(commentId) {
+            const commentItem = document.querySelector(\`[data-comment-id="\${commentId}"]\`);
+            if (!commentItem) return;
+            
+            const commentBody = commentItem.querySelector('.comment-body');
+            const contentDiv = commentBody.querySelector('.comment-content');
+            const actionsMenu = commentBody.querySelector('.comment-actions-menu');
+            const currentContent = contentDiv.textContent;
+            
+            // Hide actions menu and replace content with edit form
+            actionsMenu.style.display = 'none';
+            contentDiv.innerHTML = \`
+                <textarea class="comment-textarea" style="margin-bottom: 12px;">\${currentContent}</textarea>
+                <div class="comment-form-actions">
+                    <button class="comment-cancel-btn" data-cancel-edit="\${commentId}" data-original-content="\${currentContent.replace(/"/g, '&quot;')}">Cancel</button>
+                    <button class="comment-submit-btn" data-save-edit="\${commentId}">Save</button>
+                </div>
+            \`;
+            
+            // Focus and auto-resize textarea
+            const textarea = contentDiv.querySelector('.comment-textarea');
+            textarea.focus();
+            textarea.style.height = 'auto';
+            textarea.style.height = textarea.scrollHeight + 'px';
+            
+            textarea.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = Math.max(100, this.scrollHeight) + 'px';
+                
+                const saveBtn = contentDiv.querySelector('.comment-submit-btn');
+                saveBtn.disabled = !this.value.trim();
+            });
+            
+            // Add event listeners for edit form buttons
+            contentDiv.querySelector('[data-cancel-edit]').addEventListener('click', function() {
+                const commentId = this.dataset.cancelEdit;
+                const originalContent = this.dataset.originalContent;
+                cancelEditComment(commentId, originalContent);
+            });
+            
+            contentDiv.querySelector('[data-save-edit]').addEventListener('click', function() {
+                const commentId = this.dataset.saveEdit;
+                saveEditComment(commentId);
+            });
+        }
+        
+        function saveEditComment(commentId) {
+            const commentItem = document.querySelector(\`[data-comment-id="\${commentId}"]\`);
+            const textarea = commentItem.querySelector('.comment-textarea');
+            const newContent = textarea.value.trim();
+            
+            if (!newContent) return;
+            
+            // Disable form while saving
+            const saveBtn = commentItem.querySelector('.comment-submit-btn');
+            const cancelBtn = commentItem.querySelector('.comment-cancel-btn');
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
+            cancelBtn.disabled = true;
+            
+            vscode.postMessage({
+                command: 'editComment',
+                commentId: commentId,
+                content: newContent
+            });
+        }
+        
+        function cancelEditComment(commentId, originalContent) {
+            const commentItem = document.querySelector(\`[data-comment-id="\${commentId}"]\`);
+            const commentBody = commentItem.querySelector('.comment-body');
+            const contentDiv = commentBody.querySelector('.comment-content');
+            const actionsMenu = commentBody.querySelector('.comment-actions-menu');
+            
+            // Restore original content and show actions menu
+            contentDiv.innerHTML = originalContent;
+            actionsMenu.style.display = 'flex';
+        }
+        
+        function replyToComment(commentId) {
+            // For now, just focus on the thread's comment form
+            // In future, this could support threaded replies
+            console.log('Reply to comment:', commentId);
+        }
+        
+        function deleteComment(commentId) {
+            if (confirm('Are you sure you want to delete this comment?')) {
+                vscode.postMessage({
+                    command: 'deleteComment',
+                    commentId: commentId
+                });
+            }
+        }
+
+        // Listen for messages from extension (mainly for future extensibility)
         window.addEventListener('message', event => {
             const message = event.data;
-            
-            if (message.command === 'reloadComplete') {
-                // Reload the entire webview content
-                location.reload();
-            }
+            // Note: Both manual reload and comment operations now regenerate HTML directly in extension
         });
     </script>
 </body>
 </html>`;
     }
     
-    private renderFileDiff(file: FileDiff): string {
+    private renderFileDiff(file: FileDiff, comments: DiffComment[] = [], baseRef?: string, compareRef?: string): string {
         const lines = file.content.split('\n');
         const hunks = this.parseDiff(lines);
         const fileId = file.path.replace(/[^a-zA-Z0-9]/g, '-');
@@ -583,13 +1130,13 @@ export class DiffWebviewProvider {
                 </div>
             </div>
             ${hunks.length > 0 ? 
-                `<table class="diff-table"><tbody>${this.renderHunks(hunks)}</tbody></table>` :
+                `<table class="diff-table"><tbody>${this.renderHunks(hunks, file.path, comments, baseRef, compareRef)}</tbody></table>` :
                 '<div class="no-changes">No changes in this file</div>'
             }
         </div>`;
     }
     
-    private renderHunks(hunks: any[]): string {
+    private renderHunks(hunks: any[], filePath: string, comments: DiffComment[] = [], baseRef?: string, compareRef?: string): string {
         let html = '';
         
         for (const hunk of hunks) {
@@ -597,16 +1144,90 @@ export class DiffWebviewProvider {
             
             for (const line of hunk.lines) {
                 const lineClass = `diff-line-${line.type}`;
+                const lineNumber = line.newLineNum || line.oldLineNum;
+                
+                // GitHub-style + button positioning
+                const addCommentButton = lineNumber ? 
+                    `<button class="add-comment-button" data-file-path="${this.escapeHtml(filePath)}" data-line-number="${lineNumber}" data-line-type="${line.type}" title="Add a comment to this line">+</button>` : 
+                    '';
+                
                 html += `
-                    <tr class="diff-line ${lineClass}">
-                        <td class="diff-line-num">${line.oldLineNum}</td>
+                    <tr class="diff-line ${lineClass}" data-line-num="${lineNumber}" data-line-type="${line.type}">
+                        <td class="diff-line-num">
+                            <div class="diff-line-wrapper">
+                                ${addCommentButton}
+                                ${line.oldLineNum}
+                            </div>
+                        </td>
                         <td class="diff-line-num">${line.newLineNum}</td>
                         <td class="diff-line-content">${this.escapeHtml(line.content)}</td>
                     </tr>
                 `;
+                
+                // Add existing comment thread for this line
+                const lineComments = comments.filter(comment => 
+                    comment.lineNumber === lineNumber && comment.lineType === line.type
+                );
+                
+                if (lineComments.length > 0) {
+                    const threadId = `${filePath}-${lineNumber}-${line.type}`;
+                    const commentCount = lineComments.length;
+                    const isCollapsed = false; // Always expanded by default
+                    
+                    html += `
+                        <tr class="comment-thread-row">
+                            <td colspan="3">
+                                <div class="comment-thread-container ${isCollapsed ? 'comment-thread-collapsed' : ''}" data-thread-id="${threadId}">
+                                    <div class="comment-thread-header" data-toggle-thread="${threadId}">
+                                        <span class="comment-thread-toggle">▼</span>
+                                        ${commentCount} comment${commentCount > 1 ? 's' : ''}
+                                    </div>
+                                    <div class="comment-thread-body">
+                                        ${lineComments.map(comment => this.renderComment(comment)).join('')}
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }
             }
         }
         
         return html;
+    }
+
+    private renderComment(comment: DiffComment): string {
+        const timestamp = new Date(comment.timestamp).toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric', 
+            year: 'numeric' 
+        });
+        const authorInitials = this.getAuthorInitials(comment.author);
+        
+        return `
+            <div class="comment-item" data-comment-id="${comment.id}">
+                <div class="comment-avatar">${authorInitials}</div>
+                <div class="comment-body">
+                    <div class="comment-header">
+                        <span class="comment-author">${this.escapeHtml(comment.author)}</span>
+                        <span class="comment-timestamp">${timestamp}</span>
+                    </div>
+                    <div class="comment-content">${this.escapeHtml(comment.content)}</div>
+                    <div class="comment-actions-menu">
+                        <button class="comment-action-btn" data-edit-comment="${comment.id}">Edit</button>
+                        <button class="comment-action-btn" data-reply-comment="${comment.id}">Reply</button>
+                        <button class="comment-action-btn" data-delete-comment="${comment.id}">Delete</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    private getAuthorInitials(author: string): string {
+        return author
+            .split(' ')
+            .map(name => name.charAt(0).toUpperCase())
+            .join('')
+            .substring(0, 2);
     }
 }
