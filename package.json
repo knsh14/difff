@@ -28,6 +28,12 @@
           "name": "Git Diff Explorer",
           "icon": "resources/diff-icon.svg",
           "contextualTitle": "Difff Explorer"
+        },
+        {
+          "id": "difff.comments",
+          "name": "Comments",
+          "icon": "$(comment-discussion)",
+          "contextualTitle": "Comment Management"
         }
       ]
     },
@@ -54,6 +60,20 @@
       {
         "command": "difff.selectMode",
         "title": "Select Mode"
+      },
+      {
+        "command": "difff.jumpToComment",
+        "title": "Jump to Comment"
+      },
+      {
+        "command": "difff.removeAllCommentsForKey",
+        "title": "Remove All Comments",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "difff.refreshComments",
+        "title": "Refresh Comments",
+        "icon": "$(refresh)"
       }
     ],
     "menus": {
@@ -67,6 +87,18 @@
           "command": "difff.refresh",
           "when": "view == difff.explorer",
           "group": "navigation@2"
+        },
+        {
+          "command": "difff.refreshComments",
+          "when": "view == difff.comments",
+          "group": "navigation@1"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "difff.removeAllCommentsForKey",
+          "when": "view == difff.comments && viewItem == commentKey",
+          "group": "inline@1"
         }
       ]
     }

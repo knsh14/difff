@@ -8,6 +8,7 @@ import {
 import { GitService } from "./gitService";
 import { DiffWebviewProvider, FileDiff } from "./webviewProvider";
 import { CommentService } from "./commentService";
+import { CommentExplorerProvider, CommentKey } from "./commentExplorer";
 
 export function activate(context: vscode.ExtensionContext) {
   // Check if we're in a git repository
@@ -32,10 +33,15 @@ export function activate(context: vscode.ExtensionContext) {
   const diffExplorerProvider = new DiffExplorerProvider(gitService);
   const diffWebviewProvider = new DiffWebviewProvider(context.extensionUri);
   const commentService = new CommentService(context);
+  const commentExplorerProvider = new CommentExplorerProvider(commentService, gitService);
 
   vscode.window.registerTreeDataProvider(
     "difff.explorer",
     diffExplorerProvider,
+  );
+  vscode.window.registerTreeDataProvider(
+    "difff.comments",
+    commentExplorerProvider,
   );
 
   const selectModeCommand = vscode.commands.registerCommand(
@@ -317,15 +323,21 @@ export function activate(context: vscode.ExtensionContext) {
 
                     // Regenerate webview content instead of reloading
                     refreshWebviewContent();
+                    // Refresh comment explorer
+                    commentExplorerProvider.refresh();
                   } else if (message.command === "editComment") {
                     commentService.updateComment(
                       message.commentId,
                       message.content,
                     );
                     refreshWebviewContent();
+                    // Refresh comment explorer
+                    commentExplorerProvider.refresh();
                   } else if (message.command === "deleteComment") {
                     commentService.deleteComment(message.commentId);
                     refreshWebviewContent();
+                    // Refresh comment explorer
+                    commentExplorerProvider.refresh();
                   } else if (message.command === "copyComments") {
                     const baseRef =
                       mode === "working"
@@ -485,12 +497,71 @@ export function activate(context: vscode.ExtensionContext) {
     },
   );
 
+  const jumpToCommentCommand = vscode.commands.registerCommand(
+    "difff.jumpToComment",
+    async (comment: any) => {
+      try {
+        // Get the mode and refs to determine how to open the diff
+        const mode = comment.compareRef === "working" ? "working" : "branch";
+        
+        if (mode === "working") {
+          // Set working directory mode and view diff
+          diffExplorerProvider.setMode("working");
+          await vscode.commands.executeCommand("difff.viewDiff");
+        } else {
+          // Set branch comparison mode with the specific refs
+          diffExplorerProvider.setMode("branch");
+          await diffExplorerProvider.setRefs(comment.baseRef, comment.compareRef);
+          await vscode.commands.executeCommand("difff.viewDiff");
+        }
+
+        // Notify user about the jump
+        vscode.window.showInformationMessage(
+          `Jumped to comment in ${comment.filePath} at line ${comment.lineNumber}`
+        );
+      } catch (error: any) {
+        vscode.window.showErrorMessage(
+          `Failed to jump to comment: ${error.message}`
+        );
+      }
+    }
+  );
+
+  const removeAllCommentsForKeyCommand = vscode.commands.registerCommand(
+    "difff.removeAllCommentsForKey",
+    async (key: CommentKey) => {
+      const confirmation = await vscode.window.showWarningMessage(
+        `Are you sure you want to remove all ${key.commentCount} comment(s) for "${key.key}"?`,
+        { modal: true },
+        "Remove All",
+        "Cancel"
+      );
+
+      if (confirmation === "Remove All") {
+        await commentExplorerProvider.removeAllCommentsForKey(key);
+        vscode.window.showInformationMessage(
+          `Removed all comments for "${key.key}"`
+        );
+      }
+    }
+  );
+
+  const refreshCommentsCommand = vscode.commands.registerCommand(
+    "difff.refreshComments",
+    () => {
+      commentExplorerProvider.refresh();
+    }
+  );
+
   context.subscriptions.push(
     selectModeCommand,
     selectBranchesCommand,
     refreshCommand,
     openFileCommand,
     viewDiffCommand,
+    jumpToCommentCommand,
+    removeAllCommentsForKeyCommand,
+    refreshCommentsCommand,
   );
 }
 
