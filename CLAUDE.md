@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Difff** - A VS Code extension that provides GitHub-like git diff viewing with branch selection capabilities.
 
 ### Key Features
+
 - Dual operation modes: Branch Comparison and Working Directory Changes
 - GitHub-style diff rendering in webview
 - Interactive branch/tag/commit selection
@@ -33,6 +34,7 @@ difff/
 ## Development Commands
 
 ### Build & Package
+
 ```bash
 npm install              # Install dependencies
 npm run compile         # Compile TypeScript
@@ -42,6 +44,7 @@ vsce package --allow-missing-repository  # Create .vsix package
 ```
 
 ### Installation & Testing
+
 ```bash
 code --install-extension difff-0.0.1.vsix  # Install extension
 # Press F5 in VS Code to launch Extension Development Host
@@ -50,18 +53,21 @@ code --install-extension difff-0.0.1.vsix  # Install extension
 ## Architecture
 
 ### Core Components
+
 1. **DiffExplorerProvider** - Manages sidebar tree view with mode selectors and branch selectors
 2. **GitService** - Handles all git operations (branches, diffs, working directory changes)
 3. **DiffWebviewProvider** - Generates HTML for GitHub-style diff rendering
 4. **Extension** - Coordinates commands and webview communication
 
 ### Operation Modes
+
 1. **Branch Comparison** - Compare any two git references (branches/tags/commits)
 2. **Working Directory** - Show staged and unstaged changes vs HEAD
 
 ### Key Technologies
+
 - **TypeScript** - Main development language
-- **simple-git** - Git operations library  
+- **simple-git** - Git operations library
 - **VS Code Extension API** - Integration with VS Code
 - **Webview API** - Custom HTML rendering for diffs
 
@@ -76,6 +82,7 @@ code --install-extension difff-0.0.1.vsix  # Install extension
 ## Configuration
 
 The extension is configured through `package.json` manifest:
+
 - Activity bar contribution with custom icon
 - Command palette integration
 - Tree view provider registration

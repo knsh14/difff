@@ -34,12 +34,14 @@ A Visual Studio Code extension that provides a GitHub-like interface for viewing
 The extension now features a GitHub Pull Request-style commenting system:
 
 ### Adding Comments
+
 1. **Hover over any diff line** to reveal a **+** button on the left
 2. **Click the + button** to open a comment form
-3. **Type your comment** in the text area 
+3. **Type your comment** in the text area
 4. **Click "Comment"** to save your comment
 
 ### Managing Comments
+
 - **View Comments**: Comment threads appear as expandable sections below the relevant lines
 - **User Avatars**: Each comment shows the author's initials in a circular avatar
 - **Timestamps**: Comments display creation dates in GitHub format
@@ -48,6 +50,7 @@ The extension now features a GitHub Pull Request-style commenting system:
 - **Collapse Threads**: Click the thread header to expand/collapse comment discussions
 
 ### Features
+
 - **Persistent Storage**: Comments are saved locally and persist across VS Code sessions
 - **Context Awareness**: Comments are tied to specific files, lines, and diff contexts
 - **GitHub-Style UI**: Familiar interface matching GitHub's PR commenting experience

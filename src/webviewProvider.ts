@@ -1,21 +1,21 @@
-import * as vscode from 'vscode';
-import { DiffComment } from './commentService';
+import * as vscode from "vscode";
+import { DiffComment } from "./commentService";
 
 export interface FileDiff {
-    path: string;
-    content: string;
-    additions: number;
-    deletions: number;
+  path: string;
+  content: string;
+  additions: number;
+  deletions: number;
 }
 
 export class DiffWebviewProvider {
-    constructor(private readonly extensionUri: vscode.Uri) {}
-    
-    getWebviewContent(diffContent: string, fileName: string): string {
-        const lines = diffContent.split('\n');
-        const hunks = this.parseDiff(lines);
-        
-        return `<!DOCTYPE html>
+  constructor(private readonly extensionUri: vscode.Uri) {}
+
+  getWebviewContent(diffContent: string, fileName: string): string {
+    const lines = diffContent.split("\n");
+    const hunks = this.parseDiff(lines);
+
+    return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -146,122 +146,153 @@ export class DiffWebviewProvider {
     ${hunks.length > 0 ? this.renderDiff(hunks) : '<div class="empty-diff">No changes in this file</div>'}
 </body>
 </html>`;
-    }
-    
-    private parseDiff(lines: string[]): any[] {
-        const hunks = [];
-        let currentHunk: any = null;
-        let oldLineNum = 0;
-        let newLineNum = 0;
-        
-        for (const line of lines) {
-            if (line.startsWith('@@')) {
-                if (currentHunk) {
-                    hunks.push(currentHunk);
-                }
-                
-                const match = line.match(/@@ -(\d+),?\d* \+(\d+),?\d* @@/);
-                if (match) {
-                    oldLineNum = parseInt(match[1]);
-                    newLineNum = parseInt(match[2]);
-                }
-                
-                currentHunk = {
-                    header: line,
-                    lines: []
-                };
-            } else if (currentHunk) {
-                if (line.startsWith('+')) {
-                    currentHunk.lines.push({
-                        type: 'addition',
-                        content: line.substring(1),
-                        newLineNum: newLineNum++,
-                        oldLineNum: ''
-                    });
-                } else if (line.startsWith('-')) {
-                    currentHunk.lines.push({
-                        type: 'deletion',
-                        content: line.substring(1),
-                        oldLineNum: oldLineNum++,
-                        newLineNum: ''
-                    });
-                } else if (line.startsWith(' ') || line === '') {
-                    currentHunk.lines.push({
-                        type: 'context',
-                        content: line.substring(1),
-                        oldLineNum: oldLineNum++,
-                        newLineNum: newLineNum++
-                    });
-                }
-            }
-        }
-        
+  }
+
+  private parseDiff(lines: string[]): any[] {
+    const hunks = [];
+    let currentHunk: any = null;
+    let oldLineNum = 0;
+    let newLineNum = 0;
+
+    for (const line of lines) {
+      if (line.startsWith("@@")) {
         if (currentHunk) {
-            hunks.push(currentHunk);
+          hunks.push(currentHunk);
         }
-        
-        return hunks;
+
+        const match = line.match(/@@ -(\d+),?\d* \+(\d+),?\d* @@/);
+        if (match) {
+          oldLineNum = parseInt(match[1]);
+          newLineNum = parseInt(match[2]);
+        }
+
+        currentHunk = {
+          header: line,
+          lines: [],
+        };
+      } else if (currentHunk) {
+        if (line.startsWith("+")) {
+          currentHunk.lines.push({
+            type: "addition",
+            content: line.substring(1),
+            newLineNum: newLineNum++,
+            oldLineNum: "",
+          });
+        } else if (line.startsWith("-")) {
+          currentHunk.lines.push({
+            type: "deletion",
+            content: line.substring(1),
+            oldLineNum: oldLineNum++,
+            newLineNum: "",
+          });
+        } else if (line.startsWith(" ") || line === "") {
+          currentHunk.lines.push({
+            type: "context",
+            content: line.substring(1),
+            oldLineNum: oldLineNum++,
+            newLineNum: newLineNum++,
+          });
+        }
+      }
     }
-    
-    private renderDiff(hunks: any[]): string {
-        let html = '<div class="diff-container"><table class="diff-table"><tbody>';
-        
-        for (const hunk of hunks) {
-            html += `<tr><td colspan="3" class="diff-hunk-header">${this.escapeHtml(hunk.header)}</td></tr>`;
-            
-            for (const line of hunk.lines) {
-                const lineClass = `diff-line-${line.type}`;
-                html += `
+
+    if (currentHunk) {
+      hunks.push(currentHunk);
+    }
+
+    return hunks;
+  }
+
+  private renderDiff(hunks: any[]): string {
+    let html = '<div class="diff-container"><table class="diff-table"><tbody>';
+
+    for (const hunk of hunks) {
+      html += `<tr><td colspan="3" class="diff-hunk-header">${this.escapeHtml(hunk.header)}</td></tr>`;
+
+      for (const line of hunk.lines) {
+        const lineClass = `diff-line-${line.type}`;
+        html += `
                     <tr class="diff-line ${lineClass}">
                         <td class="diff-line-num">${line.oldLineNum}</td>
                         <td class="diff-line-num">${line.newLineNum}</td>
                         <td class="diff-line-content">${this.escapeHtml(line.content)}</td>
                     </tr>
                 `;
-            }
-        }
-        
-        html += '</tbody></table></div>';
-        return html;
+      }
     }
-    
-    private countAdditions(hunks: any[]): number {
-        let count = 0;
-        for (const hunk of hunks) {
-            count += hunk.lines.filter((l: any) => l.type === 'addition').length;
-        }
-        return count;
+
+    html += "</tbody></table></div>";
+    return html;
+  }
+
+  private countAdditions(hunks: any[]): number {
+    let count = 0;
+    for (const hunk of hunks) {
+      count += hunk.lines.filter((l: any) => l.type === "addition").length;
     }
-    
-    private countDeletions(hunks: any[]): number {
-        let count = 0;
-        for (const hunk of hunks) {
-            count += hunk.lines.filter((l: any) => l.type === 'deletion').length;
-        }
-        return count;
+    return count;
+  }
+
+  private countDeletions(hunks: any[]): number {
+    let count = 0;
+    for (const hunk of hunks) {
+      count += hunk.lines.filter((l: any) => l.type === "deletion").length;
     }
-    
-    private escapeHtml(text: string): string {
-        const map: any = {
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": '&#39;'
-        };
-        return text.replace(/[&<>"']/g, m => map[m]);
-    }
-    
-    getAllDiffsContent(fileDiffs: FileDiff[], baseRef: string, compareRef: string, comments: Map<string, DiffComment[]> = new Map(), currentUser?: string): string {
-        return this.generateDiffHTML(fileDiffs, `${baseRef} → ${compareRef}`, baseRef, compareRef, comments, currentUser);
-    }
-    
-    getWorkingDirectoryContent(fileDiffs: FileDiff[], comments: Map<string, DiffComment[]> = new Map(), currentUser?: string): string {
-        return this.generateDiffHTML(fileDiffs, 'HEAD → Working Directory', 'HEAD', 'working', comments, currentUser);
-    }
-    
-    private generateDiffHTML(fileDiffs: FileDiff[], title: string, baseRef?: string, compareRef?: string, comments: Map<string, DiffComment[]> = new Map(), currentUser?: string): string {
-        return `<!DOCTYPE html>
+    return count;
+  }
+
+  private escapeHtml(text: string): string {
+    const map: any = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    };
+    return text.replace(/[&<>"']/g, (m) => map[m]);
+  }
+
+  getAllDiffsContent(
+    fileDiffs: FileDiff[],
+    baseRef: string,
+    compareRef: string,
+    comments: Map<string, DiffComment[]> = new Map(),
+    currentUser?: string,
+  ): string {
+    return this.generateDiffHTML(
+      fileDiffs,
+      `${baseRef} → ${compareRef}`,
+      baseRef,
+      compareRef,
+      comments,
+      currentUser,
+    );
+  }
+
+  getWorkingDirectoryContent(
+    fileDiffs: FileDiff[],
+    comments: Map<string, DiffComment[]> = new Map(),
+    currentUser?: string,
+  ): string {
+    return this.generateDiffHTML(
+      fileDiffs,
+      "HEAD → Working Directory",
+      "HEAD",
+      "working",
+      comments,
+      currentUser,
+    );
+  }
+
+  private generateDiffHTML(
+    fileDiffs: FileDiff[],
+    title: string,
+    baseRef?: string,
+    compareRef?: string,
+    comments: Map<string, DiffComment[]> = new Map(),
+    currentUser?: string,
+  ): string {
+    return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -323,6 +354,34 @@ export class DiffWebviewProvider {
         
         .reload-button.loading {
             opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        .copy-comments-button {
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: background-color 0.2s;
+        }
+        
+        .copy-comments-button:hover {
+            background: var(--vscode-button-hoverBackground);
+        }
+        
+        .copy-comments-button:active {
+            background: var(--vscode-button-background);
+            transform: translateY(1px);
+        }
+        
+        .copy-comments-button:disabled {
+            opacity: 0.5;
             cursor: not-allowed;
         }
         
@@ -802,28 +861,50 @@ export class DiffWebviewProvider {
                 <span>↻</span>
                 <span>Reload</span>
             </button>
+            <button class="copy-comments-button" id="copy-comments-btn">
+                <span>📋</span>
+                <span>Copy Comments</span>
+            </button>
         </div>
     </div>
     
-    ${fileDiffs.length > 3 ? `
+    ${
+      fileDiffs.length > 3
+        ? `
     <div class="file-nav">
         <div class="file-nav-title">Files Changed</div>
-        ${fileDiffs.map(file => `
-            <a href="#file-${this.escapeHtml(file.path.replace(/[^a-zA-Z0-9]/g, '-'))}" class="file-link">
+        ${fileDiffs
+          .map(
+            (file) => `
+            <a href="#file-${this.escapeHtml(file.path.replace(/[^a-zA-Z0-9]/g, "-"))}" class="file-link">
                 ${this.escapeHtml(file.path)}
                 <span class="file-stats">
                     <span class="additions">+${file.additions}</span>
                     <span class="deletions">-${file.deletions}</span>
                 </span>
             </a>
-        `).join('')}
+        `,
+          )
+          .join("")}
     </div>
-    ` : ''}
+    `
+        : ""
+    }
     
     <div class="content">
-        ${fileDiffs.length === 0 ? 
-            '<div class="empty-diff">No changes found between these branches</div>' :
-            fileDiffs.map(file => this.renderFileDiff(file, comments.get(file.path) || [], baseRef, compareRef)).join('')
+        ${
+          fileDiffs.length === 0
+            ? '<div class="empty-diff">No changes found between these branches</div>'
+            : fileDiffs
+                .map((file) =>
+                  this.renderFileDiff(
+                    file,
+                    comments.get(file.path) || [],
+                    baseRef,
+                    compareRef,
+                  ),
+                )
+                .join("")
         }
     </div>
     
@@ -853,6 +934,22 @@ export class DiffWebviewProvider {
                     vscode.postMessage({ command: 'reload' });
                 });
             }
+            
+            // Copy comments button functionality
+            const copyCommentsBtn = document.getElementById('copy-comments-btn');
+            if (copyCommentsBtn) {
+                copyCommentsBtn.addEventListener('click', function() {
+                    this.disabled = true;
+                    this.innerHTML = '<span>📋</span><span>Copying...</span>';
+                    vscode.postMessage({ command: 'copyComments' });
+                    
+                    // Reset button state after a delay
+                    setTimeout(() => {
+                        this.disabled = false;
+                        this.innerHTML = '<span>📋</span><span>Copy Comments</span>';
+                    }, 1000);
+                });
+            }
         }
         
         // Initialize when DOM is ready
@@ -863,7 +960,7 @@ export class DiffWebviewProvider {
         }
         
         // Set current user info from extension
-        const currentUserName = ${JSON.stringify(currentUser || 'User')};
+        const currentUserName = ${JSON.stringify(currentUser || "User")};
         let currentCommentThreadId = null;
         
         function getCurrentUserInitials() {
@@ -1113,14 +1210,19 @@ export class DiffWebviewProvider {
     </script>
 </body>
 </html>`;
-    }
-    
-    private renderFileDiff(file: FileDiff, comments: DiffComment[] = [], baseRef?: string, compareRef?: string): string {
-        const lines = file.content.split('\n');
-        const hunks = this.parseDiff(lines);
-        const fileId = file.path.replace(/[^a-zA-Z0-9]/g, '-');
-        
-        return `
+  }
+
+  private renderFileDiff(
+    file: FileDiff,
+    comments: DiffComment[] = [],
+    baseRef?: string,
+    compareRef?: string,
+  ): string {
+    const lines = file.content.split("\n");
+    const hunks = this.parseDiff(lines);
+    const fileId = file.path.replace(/[^a-zA-Z0-9]/g, "-");
+
+    return `
         <div class="file-diff" id="file-${this.escapeHtml(fileId)}">
             <div class="file-header">
                 <h2>${this.escapeHtml(file.path)}</h2>
@@ -1129,29 +1231,36 @@ export class DiffWebviewProvider {
                     <span class="deletions">-${file.deletions}</span>
                 </div>
             </div>
-            ${hunks.length > 0 ? 
-                `<table class="diff-table"><tbody>${this.renderHunks(hunks, file.path, comments, baseRef, compareRef)}</tbody></table>` :
-                '<div class="no-changes">No changes in this file</div>'
+            ${
+              hunks.length > 0
+                ? `<table class="diff-table"><tbody>${this.renderHunks(hunks, file.path, comments, baseRef, compareRef)}</tbody></table>`
+                : '<div class="no-changes">No changes in this file</div>'
             }
         </div>`;
-    }
-    
-    private renderHunks(hunks: any[], filePath: string, comments: DiffComment[] = [], baseRef?: string, compareRef?: string): string {
-        let html = '';
-        
-        for (const hunk of hunks) {
-            html += `<tr><td colspan="3" class="diff-hunk-header">${this.escapeHtml(hunk.header)}</td></tr>`;
-            
-            for (const line of hunk.lines) {
-                const lineClass = `diff-line-${line.type}`;
-                const lineNumber = line.newLineNum || line.oldLineNum;
-                
-                // GitHub-style + button positioning
-                const addCommentButton = lineNumber ? 
-                    `<button class="add-comment-button" data-file-path="${this.escapeHtml(filePath)}" data-line-number="${lineNumber}" data-line-type="${line.type}" title="Add a comment to this line">+</button>` : 
-                    '';
-                
-                html += `
+  }
+
+  private renderHunks(
+    hunks: any[],
+    filePath: string,
+    comments: DiffComment[] = [],
+    baseRef?: string,
+    compareRef?: string,
+  ): string {
+    let html = "";
+
+    for (const hunk of hunks) {
+      html += `<tr><td colspan="3" class="diff-hunk-header">${this.escapeHtml(hunk.header)}</td></tr>`;
+
+      for (const line of hunk.lines) {
+        const lineClass = `diff-line-${line.type}`;
+        const lineNumber = line.newLineNum || line.oldLineNum;
+
+        // GitHub-style + button positioning
+        const addCommentButton = lineNumber
+          ? `<button class="add-comment-button" data-file-path="${this.escapeHtml(filePath)}" data-line-number="${lineNumber}" data-line-type="${line.type}" title="Add a comment to this line">+</button>`
+          : "";
+
+        html += `
                     <tr class="diff-line ${lineClass}" data-line-num="${lineNumber}" data-line-type="${line.type}">
                         <td class="diff-line-num">
                             <div class="diff-line-wrapper">
@@ -1163,48 +1272,49 @@ export class DiffWebviewProvider {
                         <td class="diff-line-content">${this.escapeHtml(line.content)}</td>
                     </tr>
                 `;
-                
-                // Add existing comment thread for this line
-                const lineComments = comments.filter(comment => 
-                    comment.lineNumber === lineNumber && comment.lineType === line.type
-                );
-                
-                if (lineComments.length > 0) {
-                    const threadId = `${filePath}-${lineNumber}-${line.type}`;
-                    const commentCount = lineComments.length;
-                    const isCollapsed = false; // Always expanded by default
-                    
-                    html += `
+
+        // Add existing comment thread for this line
+        const lineComments = comments.filter(
+          (comment) =>
+            comment.lineNumber === lineNumber && comment.lineType === line.type,
+        );
+
+        if (lineComments.length > 0) {
+          const threadId = `${filePath}-${lineNumber}-${line.type}`;
+          const commentCount = lineComments.length;
+          const isCollapsed = false; // Always expanded by default
+
+          html += `
                         <tr class="comment-thread-row">
                             <td colspan="3">
-                                <div class="comment-thread-container ${isCollapsed ? 'comment-thread-collapsed' : ''}" data-thread-id="${threadId}">
+                                <div class="comment-thread-container ${isCollapsed ? "comment-thread-collapsed" : ""}" data-thread-id="${threadId}">
                                     <div class="comment-thread-header" data-toggle-thread="${threadId}">
                                         <span class="comment-thread-toggle">▼</span>
-                                        ${commentCount} comment${commentCount > 1 ? 's' : ''}
+                                        ${commentCount} comment${commentCount > 1 ? "s" : ""}
                                     </div>
                                     <div class="comment-thread-body">
-                                        ${lineComments.map(comment => this.renderComment(comment)).join('')}
+                                        ${lineComments.map((comment) => this.renderComment(comment)).join("")}
                                     </div>
                                 </div>
                             </td>
                         </tr>
                     `;
-                }
-            }
         }
-        
-        return html;
+      }
     }
 
-    private renderComment(comment: DiffComment): string {
-        const timestamp = new Date(comment.timestamp).toLocaleDateString('en-US', { 
-            month: 'short', 
-            day: 'numeric', 
-            year: 'numeric' 
-        });
-        const authorInitials = this.getAuthorInitials(comment.author);
-        
-        return `
+    return html;
+  }
+
+  private renderComment(comment: DiffComment): string {
+    const timestamp = new Date(comment.timestamp).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+    const authorInitials = this.getAuthorInitials(comment.author);
+
+    return `
             <div class="comment-item" data-comment-id="${comment.id}">
                 <div class="comment-avatar">${authorInitials}</div>
                 <div class="comment-body">
@@ -1221,13 +1331,13 @@ export class DiffWebviewProvider {
                 </div>
             </div>
         `;
-    }
+  }
 
-    private getAuthorInitials(author: string): string {
-        return author
-            .split(' ')
-            .map(name => name.charAt(0).toUpperCase())
-            .join('')
-            .substring(0, 2);
-    }
+  private getAuthorInitials(author: string): string {
+    return author
+      .split(" ")
+      .map((name) => name.charAt(0).toUpperCase())
+      .join("")
+      .substring(0, 2);
+  }
 }
