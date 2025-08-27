@@ -45,9 +45,13 @@
         "title": "Open Diff in Editor"
       },
       {
-        "command": "difff.viewAllDiffs",
-        "title": "View All Diffs",
+        "command": "difff.viewDiff",
+        "title": "View Diff",
         "icon": "$(open-preview)"
+      },
+      {
+        "command": "difff.selectMode",
+        "title": "Select Mode"
       }
     ],
     "menus": {

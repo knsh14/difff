@@ -37,6 +37,24 @@ export class DiffFile extends vscode.TreeItem {
     }
 }
 
+export class ModeSelector extends vscode.TreeItem {
+    constructor(
+        public readonly mode: 'branch' | 'working',
+        public readonly isActive: boolean
+    ) {
+        const label = mode === 'branch' ? 'Branch Comparison' : 'Working Directory Changes';
+        super(label, vscode.TreeItemCollapsibleState.None);
+        this.description = isActive ? '(Active)' : '';
+        this.contextValue = 'modeSelector';
+        this.iconPath = new vscode.ThemeIcon(mode === 'branch' ? 'git-compare' : 'git-commit');
+        this.command = {
+            command: 'difff.selectMode',
+            title: 'Select Mode',
+            arguments: [mode]
+        };
+    }
+}
+
 export class BranchSelector extends vscode.TreeItem {
     constructor(
         public readonly label: string,
@@ -55,12 +73,13 @@ export class BranchSelector extends vscode.TreeItem {
     }
 }
 
-export type TreeNode = BranchSelector | DiffFile;
+export type TreeNode = ModeSelector | BranchSelector | DiffFile;
 
 export class DiffExplorerProvider implements vscode.TreeDataProvider<TreeNode> {
     private _onDidChangeTreeData: vscode.EventEmitter<TreeNode | undefined | null | void> = new vscode.EventEmitter<TreeNode | undefined | null | void>();
     readonly onDidChangeTreeData: vscode.Event<TreeNode | undefined | null | void> = this._onDidChangeTreeData.event;
     
+    private mode: 'branch' | 'working' = 'branch';
     private baseRef: string = '';
     private compareRef: string = '';
     private diffFiles: DiffFile[] = [];
@@ -88,17 +107,39 @@ export class DiffExplorerProvider implements vscode.TreeDataProvider<TreeNode> {
         return this.compareRef;
     }
     
+    getMode(): 'branch' | 'working' {
+        return this.mode;
+    }
+    
+    setMode(mode: 'branch' | 'working') {
+        this.mode = mode;
+        this._onDidChangeTreeData.fire();
+    }
+    
+    isReadyForDiff(): boolean {
+        if (this.mode === 'working') {
+            return true; // Working directory mode is always ready
+        }
+        return !!(this.baseRef && this.compareRef); // Branch mode needs both refs
+    }
+    
     getTreeItem(element: TreeNode): vscode.TreeItem {
         return element;
     }
     
     async getChildren(element?: TreeNode): Promise<TreeNode[]> {
         if (!element) {
-            // Root level - only show branch selectors
-            const nodes: TreeNode[] = [
-                new BranchSelector('Base', 'base', this.baseRef),
-                new BranchSelector('Compare', 'compare', this.compareRef)
-            ];
+            const nodes: TreeNode[] = [];
+            
+            // Mode selectors
+            nodes.push(new ModeSelector('branch', this.mode === 'branch'));
+            nodes.push(new ModeSelector('working', this.mode === 'working'));
+            
+            // Branch selectors (only show in branch mode)
+            if (this.mode === 'branch') {
+                nodes.push(new BranchSelector('Base', 'base', this.baseRef));
+                nodes.push(new BranchSelector('Compare', 'compare', this.compareRef));
+            }
             
             return nodes;
         }

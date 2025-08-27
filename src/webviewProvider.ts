@@ -252,12 +252,20 @@ export class DiffWebviewProvider {
     }
     
     getAllDiffsContent(fileDiffs: FileDiff[], baseRef: string, compareRef: string): string {
+        return this.generateDiffHTML(fileDiffs, `${baseRef} → ${compareRef}`);
+    }
+    
+    getWorkingDirectoryContent(fileDiffs: FileDiff[]): string {
+        return this.generateDiffHTML(fileDiffs, 'HEAD → Working Directory');
+    }
+    
+    private generateDiffHTML(fileDiffs: FileDiff[], title: string): string {
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>All Diffs: ${baseRef} → ${compareRef}</title>
+    <title>Diff View: ${title}</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
@@ -286,6 +294,35 @@ export class DiffWebviewProvider {
             display: flex;
             gap: 20px;
             font-size: 14px;
+            align-items: center;
+        }
+        
+        .reload-button {
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: background-color 0.2s;
+        }
+        
+        .reload-button:hover {
+            background: var(--vscode-button-hoverBackground);
+        }
+        
+        .reload-button:active {
+            background: var(--vscode-button-background);
+            transform: translateY(1px);
+        }
+        
+        .reload-button.loading {
+            opacity: 0.7;
+            cursor: not-allowed;
         }
         
         .stat-item {
@@ -452,7 +489,7 @@ export class DiffWebviewProvider {
 </head>
 <body>
     <div class="header">
-        <h1>Comparing ${this.escapeHtml(baseRef)} → ${this.escapeHtml(compareRef)}</h1>
+        <h1>${this.escapeHtml(title)}</h1>
         <div class="header-stats">
             <div class="stat-item">
                 <span>${fileDiffs.length} files changed</span>
@@ -463,6 +500,10 @@ export class DiffWebviewProvider {
             <div class="stat-item deletions">
                 <span>-${fileDiffs.reduce((sum, f) => sum + f.deletions, 0)} deletions</span>
             </div>
+            <button class="reload-button" onclick="reloadDiff()">
+                <span>↻</span>
+                <span>Reload</span>
+            </button>
         </div>
     </div>
     
@@ -489,6 +530,9 @@ export class DiffWebviewProvider {
     </div>
     
     <script>
+        // VS Code API
+        const vscode = acquireVsCodeApi();
+        
         // Smooth scroll for navigation links
         document.querySelectorAll('.file-link').forEach(link => {
             link.addEventListener('click', (e) => {
@@ -498,6 +542,26 @@ export class DiffWebviewProvider {
                     target.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
             });
+        });
+        
+        // Reload functionality
+        function reloadDiff() {
+            const button = document.querySelector('.reload-button');
+            button.classList.add('loading');
+            button.innerHTML = '<span>↻</span><span>Loading...</span>';
+            
+            // Send message to extension
+            vscode.postMessage({ command: 'reload' });
+        }
+        
+        // Listen for messages from extension
+        window.addEventListener('message', event => {
+            const message = event.data;
+            
+            if (message.command === 'reloadComplete') {
+                // Reload the entire webview content
+                location.reload();
+            }
         });
     </script>
 </body>

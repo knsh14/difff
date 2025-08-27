@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { DiffExplorerProvider, DiffFile, BranchSelector } from './diffExplorer';
+import { DiffExplorerProvider, DiffFile, BranchSelector, ModeSelector } from './diffExplorer';
 import { GitService } from './gitService';
 import { DiffWebviewProvider, FileDiff } from './webviewProvider';
 
@@ -23,6 +23,15 @@ export function activate(context: vscode.ExtensionContext) {
     const diffWebviewProvider = new DiffWebviewProvider(context.extensionUri);
 
     vscode.window.registerTreeDataProvider('difff.explorer', diffExplorerProvider);
+    
+    const selectModeCommand = vscode.commands.registerCommand('difff.selectMode', async (mode: 'branch' | 'working') => {
+        diffExplorerProvider.setMode(mode);
+        
+        // If switching to working mode, auto-open diff view
+        if (mode === 'working') {
+            vscode.commands.executeCommand('difff.viewDiff');
+        }
+    });
     
     const selectBranchesCommand = vscode.commands.registerCommand('difff.selectBranches', async (type?: 'base' | 'compare') => {
         try {
@@ -49,14 +58,14 @@ export function activate(context: vscode.ExtensionContext) {
                     const bothSelected = await diffExplorerProvider.setRefs(baseRef, compareRef);
                     if (bothSelected) {
                         // Auto-open diff view when both branches are selected
-                        vscode.commands.executeCommand('difff.viewAllDiffs');
+                        vscode.commands.executeCommand('difff.viewDiff');
                     }
                 } else {
                     const currentCompare = diffExplorerProvider.getCompareRef();
                     if (currentCompare) {
                         const bothSelected = await diffExplorerProvider.setRefs(baseRef, currentCompare);
                         if (bothSelected) {
-                            vscode.commands.executeCommand('difff.viewAllDiffs');
+                            vscode.commands.executeCommand('difff.viewDiff');
                         }
                     } else {
                         await diffExplorerProvider.setRefs(baseRef, '');
@@ -76,7 +85,7 @@ export function activate(context: vscode.ExtensionContext) {
                 if (!compareRef) return;
                 const bothSelected = await diffExplorerProvider.setRefs(currentBase, compareRef);
                 if (bothSelected) {
-                    vscode.commands.executeCommand('difff.viewAllDiffs');
+                    vscode.commands.executeCommand('difff.viewDiff');
                 }
             }
         } catch (error: any) {
@@ -88,11 +97,9 @@ export function activate(context: vscode.ExtensionContext) {
         // Refresh the tree view
         diffExplorerProvider.refresh();
         
-        // If both branches are selected, also refresh the diff view
-        const baseRef = diffExplorerProvider.getBaseRef();
-        const compareRef = diffExplorerProvider.getCompareRef();
-        if (baseRef && compareRef) {
-            vscode.commands.executeCommand('difff.viewAllDiffs');
+        // If ready for diff, also refresh the diff view
+        if (diffExplorerProvider.isReadyForDiff()) {
+            vscode.commands.executeCommand('difff.viewDiff');
         }
     });
     
@@ -137,47 +144,74 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
     
-    const viewAllDiffsCommand = vscode.commands.registerCommand('difff.viewAllDiffs', async () => {
-        const baseRef = diffExplorerProvider.getBaseRef();
-        const compareRef = diffExplorerProvider.getCompareRef();
-        
-        if (!baseRef || !compareRef) {
-            vscode.window.showErrorMessage('Please select branches to compare first');
-            return;
-        }
+    const viewDiffCommand = vscode.commands.registerCommand('difff.viewDiff', async () => {
+        const mode = diffExplorerProvider.getMode();
         
         // Show loading message
         vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
-            title: "Loading all diffs...",
+            title: mode === 'working' ? "Loading working directory changes..." : "Loading branch diffs...",
             cancellable: false
         }, async (progress) => {
             try {
-                // Get all diff files
-                const diffFiles = await gitService.getDiffFiles(baseRef, compareRef);
+                let diffFiles: any[] = [];
+                let fileDiffs: FileDiff[] = [];
+                let title = '';
                 
-                // Get diff content for each file
-                const fileDiffs: FileDiff[] = [];
-                for (let i = 0; i < diffFiles.length; i++) {
-                    const file = diffFiles[i];
-                    progress.report({ 
-                        increment: (100 / diffFiles.length),
-                        message: `Processing ${file.path}...`
-                    });
+                if (mode === 'working') {
+                    // Working directory mode
+                    title = 'Working Directory Changes';
+                    diffFiles = await gitService.getWorkingDirectoryFiles();
                     
-                    const content = await gitService.getFileDiff(baseRef, compareRef, file.path);
-                    fileDiffs.push({
-                        path: file.path,
-                        content: content,
-                        additions: file.additions,
-                        deletions: file.deletions
-                    });
+                    for (let i = 0; i < diffFiles.length; i++) {
+                        const file = diffFiles[i];
+                        progress.report({ 
+                            increment: (100 / diffFiles.length),
+                            message: `Processing ${file.path}...`
+                        });
+                        
+                        const content = await gitService.getWorkingDirectoryFileDiff(file.path);
+                        fileDiffs.push({
+                            path: file.path,
+                            content: content,
+                            additions: file.additions,
+                            deletions: file.deletions
+                        });
+                    }
+                } else {
+                    // Branch comparison mode
+                    const baseRef = diffExplorerProvider.getBaseRef();
+                    const compareRef = diffExplorerProvider.getCompareRef();
+                    
+                    if (!baseRef || !compareRef) {
+                        vscode.window.showErrorMessage('Please select branches to compare first');
+                        return;
+                    }
+                    
+                    title = `${baseRef} → ${compareRef}`;
+                    diffFiles = await gitService.getDiffFiles(baseRef, compareRef);
+                    
+                    for (let i = 0; i < diffFiles.length; i++) {
+                        const file = diffFiles[i];
+                        progress.report({ 
+                            increment: (100 / diffFiles.length),
+                            message: `Processing ${file.path}...`
+                        });
+                        
+                        const content = await gitService.getFileDiff(baseRef, compareRef, file.path);
+                        fileDiffs.push({
+                            path: file.path,
+                            content: content,
+                            additions: file.additions,
+                            deletions: file.deletions
+                        });
+                    }
                 }
                 
                 // Create webview panel
                 const panel = vscode.window.createWebviewPanel(
-                    'difff.allDiffs',
-                    `All Diffs: ${baseRef} → ${compareRef}`,
+                    'difff.diffView',
+                    `Diff: ${title}`,
                     vscode.ViewColumn.One,
                     {
                         enableScripts: true,
@@ -185,8 +219,31 @@ export function activate(context: vscode.ExtensionContext) {
                     }
                 );
                 
+                // Set up message handling for reload button
+                panel.webview.onDidReceiveMessage(
+                    message => {
+                        if (message.command === 'reload') {
+                            // Refresh the diff view
+                            vscode.commands.executeCommand('difff.viewDiff');
+                            
+                            // Send reload complete message back to webview
+                            setTimeout(() => {
+                                panel.webview.postMessage({ command: 'reloadComplete' });
+                            }, 100);
+                        }
+                    },
+                    undefined,
+                    context.subscriptions
+                );
+                
                 // Set webview content
-                panel.webview.html = diffWebviewProvider.getAllDiffsContent(fileDiffs, baseRef, compareRef);
+                if (mode === 'working') {
+                    panel.webview.html = diffWebviewProvider.getWorkingDirectoryContent(fileDiffs);
+                } else {
+                    const baseRef = diffExplorerProvider.getBaseRef();
+                    const compareRef = diffExplorerProvider.getCompareRef();
+                    panel.webview.html = diffWebviewProvider.getAllDiffsContent(fileDiffs, baseRef, compareRef);
+                }
                 
             } catch (error: any) {
                 vscode.window.showErrorMessage(`Failed to load diffs: ${error.message}`);
@@ -194,7 +251,7 @@ export function activate(context: vscode.ExtensionContext) {
         });
     });
     
-    context.subscriptions.push(selectBranchesCommand, refreshCommand, openFileCommand, viewAllDiffsCommand);
+    context.subscriptions.push(selectModeCommand, selectBranchesCommand, refreshCommand, openFileCommand, viewDiffCommand);
 }
 
 export function deactivate() {}

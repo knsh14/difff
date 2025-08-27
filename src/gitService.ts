@@ -140,4 +140,91 @@ export class GitService {
         if (insertions === 0 && deletions > 0) return 'deleted';
         return 'modified';
     }
+    
+    async getWorkingDirectoryDiff(): Promise<string> {
+        try {
+            // Get diff for staged and unstaged changes
+            const stagedDiff = await this.git.diff(['--staged']);
+            const unstagedDiff = await this.git.diff();
+            
+            // Combine both diffs
+            return stagedDiff + '\n' + unstagedDiff;
+        } catch (error) {
+            console.error('Error getting working directory diff:', error);
+            return '';
+        }
+    }
+    
+    async getWorkingDirectoryFiles(): Promise<Array<{path: string, status: string, additions: number, deletions: number}>> {
+        try {
+            const status = await this.git.status();
+            const files: Array<{path: string, status: string, additions: number, deletions: number}> = [];
+            
+            // Process different types of changes
+            for (const file of status.files) {
+                const filePath = file.path;
+                let fileStatus = 'modified';
+                
+                // Determine file status
+                if (file.index === '?' && file.working_dir === '?') {
+                    fileStatus = 'untracked';
+                } else if (file.index === 'A' || file.working_dir === 'A') {
+                    fileStatus = 'added';
+                } else if (file.index === 'D' || file.working_dir === 'D') {
+                    fileStatus = 'deleted';
+                } else if (file.index === 'M' || file.working_dir === 'M') {
+                    fileStatus = 'modified';
+                }
+                
+                // Get diff stats for the file
+                let additions = 0;
+                let deletions = 0;
+                try {
+                    const fileDiff = await this.getWorkingDirectoryFileDiff(filePath);
+                    const lines = fileDiff.split('\n');
+                    for (const line of lines) {
+                        if (line.startsWith('+') && !line.startsWith('+++')) additions++;
+                        if (line.startsWith('-') && !line.startsWith('---')) deletions++;
+                    }
+                } catch (err) {
+                    // If we can't get diff stats, use defaults
+                }
+                
+                files.push({
+                    path: filePath,
+                    status: fileStatus,
+                    additions,
+                    deletions
+                });
+            }
+            
+            return files;
+        } catch (error) {
+            console.error('Error getting working directory files:', error);
+            return [];
+        }
+    }
+    
+    async getWorkingDirectoryFileDiff(filePath: string): Promise<string> {
+        try {
+            // Try to get staged diff first, then unstaged
+            const stagedDiff = await this.git.diff(['--staged', '--', filePath]);
+            const unstagedDiff = await this.git.diff(['--', filePath]);
+            
+            // Combine both diffs
+            let combinedDiff = '';
+            if (stagedDiff.trim()) {
+                combinedDiff += stagedDiff;
+            }
+            if (unstagedDiff.trim()) {
+                if (combinedDiff) combinedDiff += '\n';
+                combinedDiff += unstagedDiff;
+            }
+            
+            return combinedDiff;
+        } catch (error) {
+            console.error('Error getting working directory file diff:', error);
+            return '';
+        }
+    }
 }
