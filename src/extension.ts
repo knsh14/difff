@@ -33,7 +33,10 @@ export function activate(context: vscode.ExtensionContext) {
   const diffExplorerProvider = new DiffExplorerProvider(gitService);
   const diffWebviewProvider = new DiffWebviewProvider(context.extensionUri);
   const commentService = new CommentService(context);
-  const commentExplorerProvider = new CommentExplorerProvider(commentService, gitService);
+  const commentExplorerProvider = new CommentExplorerProvider(
+    commentService,
+    gitService,
+  );
 
   vscode.window.registerTreeDataProvider(
     "difff.explorer",
@@ -503,7 +506,7 @@ export function activate(context: vscode.ExtensionContext) {
       try {
         // Get the mode and refs to determine how to open the diff
         const mode = comment.compareRef === "working" ? "working" : "branch";
-        
+
         if (mode === "working") {
           // Set working directory mode and view diff
           diffExplorerProvider.setMode("working");
@@ -511,20 +514,23 @@ export function activate(context: vscode.ExtensionContext) {
         } else {
           // Set branch comparison mode with the specific refs
           diffExplorerProvider.setMode("branch");
-          await diffExplorerProvider.setRefs(comment.baseRef, comment.compareRef);
+          await diffExplorerProvider.setRefs(
+            comment.baseRef,
+            comment.compareRef,
+          );
           await vscode.commands.executeCommand("difff.viewDiff");
         }
 
         // Notify user about the jump
         vscode.window.showInformationMessage(
-          `Jumped to comment in ${comment.filePath} at line ${comment.lineNumber}`
+          `Jumped to comment in ${comment.filePath} at line ${comment.lineNumber}`,
         );
       } catch (error: any) {
         vscode.window.showErrorMessage(
-          `Failed to jump to comment: ${error.message}`
+          `Failed to jump to comment: ${error.message}`,
         );
       }
-    }
+    },
   );
 
   const removeAllCommentsForKeyCommand = vscode.commands.registerCommand(
@@ -534,23 +540,23 @@ export function activate(context: vscode.ExtensionContext) {
         `Are you sure you want to remove all ${key.commentCount} comment(s) for "${key.key}"?`,
         { modal: true },
         "Remove All",
-        "Cancel"
+        "Cancel",
       );
 
       if (confirmation === "Remove All") {
         await commentExplorerProvider.removeAllCommentsForKey(key);
         vscode.window.showInformationMessage(
-          `Removed all comments for "${key.key}"`
+          `Removed all comments for "${key.key}"`,
         );
       }
-    }
+    },
   );
 
   const refreshCommentsCommand = vscode.commands.registerCommand(
     "difff.refreshComments",
     () => {
       commentExplorerProvider.refresh();
-    }
+    },
   );
 
   context.subscriptions.push(

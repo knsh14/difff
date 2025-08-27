@@ -151,6 +151,41 @@ export class GitService {
     return ref;
   }
 
+  private parseShortStatus(status: string): string {
+    // Git status --short format: XY filename
+    // X = staged status, Y = working tree status
+    // ' ' = unmodified, M = modified, A = added, D = deleted, R = renamed, C = copied, U = updated but unmerged, ? = untracked, ! = ignored
+
+    const stagedStatus = status[0];
+    const workingTreeStatus = status[1];
+
+    if (stagedStatus === "?" && workingTreeStatus === "?") {
+      return "untracked";
+    }
+
+    if (stagedStatus === "A" || workingTreeStatus === "A") {
+      return "added";
+    }
+
+    if (stagedStatus === "D" || workingTreeStatus === "D") {
+      return "deleted";
+    }
+
+    if (stagedStatus === "R" || workingTreeStatus === "R") {
+      return "renamed";
+    }
+
+    if (stagedStatus === "M" || workingTreeStatus === "M") {
+      return "modified";
+    }
+
+    if (stagedStatus === "C" || workingTreeStatus === "C") {
+      return "copied";
+    }
+
+    return "modified"; // fallback
+  }
+
   private getFileStatus(file: any): string {
     if (file.binary) return "binary";
     const deletions = "deletions" in file ? file.deletions : 0;
@@ -183,7 +218,8 @@ export class GitService {
     }>
   > {
     try {
-      const status = await this.git.status();
+      // Use git status --short for more efficient parsing
+      const shortStatus = await this.git.raw(["status", "--short"]);
       const files: Array<{
         path: string;
         status: string;
@@ -191,34 +227,38 @@ export class GitService {
         deletions: number;
       }> = [];
 
-      // Process different types of changes
-      for (const file of status.files) {
-        const filePath = file.path;
-        let fileStatus = "modified";
+      // Parse each line of git status --short output
+      const lines = shortStatus.split("\n").filter((line) => line.trim());
 
-        // Determine file status
-        if (file.index === "?" && file.working_dir === "?") {
-          fileStatus = "untracked";
-        } else if (file.index === "A" || file.working_dir === "A") {
-          fileStatus = "added";
-        } else if (file.index === "D" || file.working_dir === "D") {
-          fileStatus = "deleted";
-        } else if (file.index === "M" || file.working_dir === "M") {
-          fileStatus = "modified";
-        }
+      for (const line of lines) {
+        if (line.length < 3) continue; // Skip invalid lines
+
+        const statusCode = line.substring(0, 2);
+        const filePath = line.substring(3); // Skip the space after status code
+        const fileStatus = this.parseShortStatus(statusCode);
 
         // Get diff stats for the file
         let additions = 0;
         let deletions = 0;
+
         try {
-          const fileDiff = await this.getWorkingDirectoryFileDiff(filePath);
-          const lines = fileDiff.split("\n");
-          for (const line of lines) {
-            if (line.startsWith("+") && !line.startsWith("+++")) additions++;
-            if (line.startsWith("-") && !line.startsWith("---")) deletions++;
+          // Only get diff stats for tracked files (not untracked)
+          if (fileStatus !== "untracked") {
+            const fileDiff = await this.getWorkingDirectoryFileDiff(filePath);
+            const diffLines = fileDiff.split("\n");
+            for (const diffLine of diffLines) {
+              if (diffLine.startsWith("+") && !diffLine.startsWith("+++"))
+                additions++;
+              if (diffLine.startsWith("-") && !diffLine.startsWith("---"))
+                deletions++;
+            }
+          } else {
+            // For untracked files, we could count lines in the file as additions
+            // but for now, we'll leave them as 0/0 to be consistent with git behavior
           }
         } catch (err) {
-          // If we can't get diff stats, use defaults
+          // If we can't get diff stats, use defaults (0/0)
+          console.warn(`Could not get diff stats for ${filePath}:`, err);
         }
 
         files.push({

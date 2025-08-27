@@ -10,28 +10,27 @@ export class CommentKey extends vscode.TreeItem {
     public readonly compareRef?: string,
   ) {
     super(key, vscode.TreeItemCollapsibleState.Collapsed);
-    
-    this.description = `${commentCount} comment${commentCount === 1 ? '' : 's'}`;
+
+    this.description = `${commentCount} comment${commentCount === 1 ? "" : "s"}`;
     this.contextValue = "commentKey";
     this.iconPath = new vscode.ThemeIcon("git-commit");
-    this.tooltip = `${key}\n${commentCount} comment${commentCount === 1 ? '' : 's'}`;
+    this.tooltip = `${key}\n${commentCount} comment${commentCount === 1 ? "" : "s"}`;
   }
 }
 
 export class CommentItem extends vscode.TreeItem {
-  constructor(
-    public readonly comment: DiffComment,
-  ) {
+  constructor(public readonly comment: DiffComment) {
     const label = `${comment.filePath}:${comment.lineNumber}`;
     super(label, vscode.TreeItemCollapsibleState.None);
-    
-    this.description = comment.content.length > 50 
-      ? comment.content.substring(0, 50) + "..." 
-      : comment.content;
+
+    this.description =
+      comment.content.length > 50
+        ? comment.content.substring(0, 50) + "..."
+        : comment.content;
     this.contextValue = "commentItem";
     this.iconPath = new vscode.ThemeIcon("comment");
     this.tooltip = `${comment.filePath} line ${comment.lineNumber}\n${comment.content}\n\nAuthor: ${comment.author}\nDate: ${new Date(comment.timestamp).toLocaleString()}`;
-    
+
     this.command = {
       command: "difff.jumpToComment",
       title: "Jump to Comment",
@@ -42,11 +41,15 @@ export class CommentItem extends vscode.TreeItem {
 
 export type CommentTreeNode = CommentKey | CommentItem;
 
-export class CommentExplorerProvider implements vscode.TreeDataProvider<CommentTreeNode> {
-  private _onDidChangeTreeData: vscode.EventEmitter<CommentTreeNode | undefined | null | void> 
-    = new vscode.EventEmitter<CommentTreeNode | undefined | null | void>();
-  readonly onDidChangeTreeData: vscode.Event<CommentTreeNode | undefined | null | void> 
-    = this._onDidChangeTreeData.event;
+export class CommentExplorerProvider
+  implements vscode.TreeDataProvider<CommentTreeNode>
+{
+  private _onDidChangeTreeData: vscode.EventEmitter<
+    CommentTreeNode | undefined | null | void
+  > = new vscode.EventEmitter<CommentTreeNode | undefined | null | void>();
+  readonly onDidChangeTreeData: vscode.Event<
+    CommentTreeNode | undefined | null | void
+  > = this._onDidChangeTreeData.event;
 
   constructor(
     private commentService: CommentService,
@@ -77,7 +80,10 @@ export class CommentExplorerProvider implements vscode.TreeDataProvider<CommentT
 
   private async getCommentKeys(): Promise<CommentKey[]> {
     const allComments = this.getAllComments();
-    const keyMap = new Map<string, { count: number, baseRef?: string, compareRef?: string }>();
+    const keyMap = new Map<
+      string,
+      { count: number; baseRef?: string; compareRef?: string }
+    >();
 
     // Group comments by their diff context (baseRef + compareRef combination)
     for (const comment of allComments) {
@@ -97,7 +103,9 @@ export class CommentExplorerProvider implements vscode.TreeDataProvider<CommentT
     // Convert to CommentKey items
     const keys: CommentKey[] = [];
     for (const [keyStr, data] of keyMap.entries()) {
-      keys.push(new CommentKey(keyStr, data.count, data.baseRef, data.compareRef));
+      keys.push(
+        new CommentKey(keyStr, data.count, data.baseRef, data.compareRef),
+      );
     }
 
     // Sort by key name
@@ -107,8 +115,10 @@ export class CommentExplorerProvider implements vscode.TreeDataProvider<CommentT
 
   private getCommentsForKey(key: CommentKey): CommentItem[] {
     const allComments = this.getAllComments();
-    const keyComments = allComments.filter(comment => {
-      return comment.baseRef === key.baseRef && comment.compareRef === key.compareRef;
+    const keyComments = allComments.filter((comment) => {
+      return (
+        comment.baseRef === key.baseRef && comment.compareRef === key.compareRef
+      );
     });
 
     // Sort comments by file path, then by line number
@@ -119,7 +129,7 @@ export class CommentExplorerProvider implements vscode.TreeDataProvider<CommentT
       return a.lineNumber - b.lineNumber;
     });
 
-    return keyComments.map(comment => new CommentItem(comment));
+    return keyComments.map((comment) => new CommentItem(comment));
   }
 
   private generateKeyFromComment(comment: DiffComment): string {
@@ -143,8 +153,10 @@ export class CommentExplorerProvider implements vscode.TreeDataProvider<CommentT
    */
   async removeAllCommentsForKey(key: CommentKey): Promise<void> {
     const allComments = this.getAllComments();
-    const filteredComments = allComments.filter(comment => {
-      return !(comment.baseRef === key.baseRef && comment.compareRef === key.compareRef);
+    const filteredComments = allComments.filter((comment) => {
+      return !(
+        comment.baseRef === key.baseRef && comment.compareRef === key.compareRef
+      );
     });
 
     // Save the filtered comments
