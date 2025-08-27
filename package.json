@@ -1,0 +1,87 @@
+{
+  "name": "difff",
+  "displayName": "Difff - GitHub-like Git Diff Viewer",
+  "description": "View git diffs in a GitHub-like interface with branch selection",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "difff",
+          "title": "Difff",
+          "icon": "resources/diff-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "difff": [
+        {
+          "id": "difff.explorer",
+          "name": "Git Diff Explorer",
+          "icon": "resources/diff-icon.svg",
+          "contextualTitle": "Difff Explorer"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "difff.selectBranches",
+        "title": "Select Branches to Compare",
+        "icon": "$(git-compare)"
+      },
+      {
+        "command": "difff.refresh",
+        "title": "Refresh Diff",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "difff.openFile",
+        "title": "Open Diff in Editor"
+      },
+      {
+        "command": "difff.viewAllDiffs",
+        "title": "View All Diffs",
+        "icon": "$(open-preview)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "difff.selectBranches",
+          "when": "view == difff.explorer",
+          "group": "navigation@1"
+        },
+        {
+          "command": "difff.refresh",
+          "when": "view == difff.explorer",
+          "group": "navigation@2"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.74.0",
+    "@types/node": "16.x",
+    "@typescript-eslint/eslint-plugin": "^5.45.0",
+    "@typescript-eslint/parser": "^5.45.0",
+    "eslint": "^8.28.0",
+    "typescript": "^4.9.3"
+  },
+  "dependencies": {
+    "simple-git": "^3.20.0"
+  }
+}
