@@ -3,6 +3,7 @@
   "displayName": "Difff - GitHub-like Git Diff Viewer",
   "description": "View git diffs in a GitHub-like interface with branch selection",
   "version": "0.0.1",
+  "publisher": "knsh14",
   "engines": {
     "vscode": "^1.74.0"
   },
