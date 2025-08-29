@@ -40,6 +40,7 @@ npm install              # Install dependencies
 npm run compile         # Compile TypeScript
 npm run watch          # Watch for changes and recompile
 npm run lint           # Run ESLint
+npx prettier --write .  # Format all files (run before committing)
 vsce package --allow-missing-repository  # Create .vsix package
 ```
 
@@ -87,6 +88,15 @@ The extension is configured through `package.json` manifest:
 - Command palette integration
 - Tree view provider registration
 - Webview panel management
+
+## Task Completion Workflow
+
+When completing any development task:
+
+1. **Compile and Test**: Run `npm run compile` to check for errors
+2. **Format Code**: Always run `npx prettier --write .` before committing
+3. **Commit Changes**: Use descriptive commit messages with proper formatting
+4. **Verify**: Check that all changes are properly committed with `git status`
 
 ## Notes
 
