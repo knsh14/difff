@@ -1234,6 +1234,41 @@ export class DiffWebviewProvider {
                 }
             }
         });
+
+        // Auto-reload when webview gains focus
+        let lastFocusTime = Date.now();
+        let reloadDebounceTimer = null;
+        
+        function handleAutoReload() {
+            const now = Date.now();
+            // Only auto-reload if it's been more than 5 seconds since last focus
+            if (now - lastFocusTime > 5000) {
+                const reloadBtn = document.getElementById('reload-diff-btn');
+                if (reloadBtn && !reloadBtn.classList.contains('loading')) {
+                    // Debounce rapid focus events
+                    if (reloadDebounceTimer) {
+                        clearTimeout(reloadDebounceTimer);
+                    }
+                    
+                    reloadDebounceTimer = setTimeout(() => {
+                        reloadBtn.classList.add('loading');
+                        reloadBtn.innerHTML = '<span>↻</span><span>Auto-reloading...</span>';
+                        vscode.postMessage({ command: 'reload' });
+                        lastFocusTime = now;
+                    }, 500); // 500ms debounce
+                }
+            }
+        }
+        
+        // Listen for window focus events
+        window.addEventListener('focus', handleAutoReload);
+        
+        // Also listen for visibility change (when tab becomes active)
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                handleAutoReload();
+            }
+        });
     </script>
 </body>
 </html>`;
