@@ -106,10 +106,26 @@ export class GitService {
     try {
       const base = this.parseRef(baseRef);
       const compare = this.parseRef(compareRef);
-      return await this.git.diff([`${base}...${compare}`, "--", filePath]);
+
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise<string>((_, reject) => {
+        setTimeout(
+          () =>
+            reject(new Error("Git diff operation timed out after 30 seconds")),
+          30000,
+        );
+      });
+
+      const diffPromise = this.git.diff([
+        `${base}...${compare}`,
+        "--",
+        filePath,
+      ]);
+
+      return await Promise.race([diffPromise, timeoutPromise]);
     } catch (error) {
       console.error("Error getting file diff:", error);
-      return "";
+      throw error; // Re-throw to handle in extension
     }
   }
 
@@ -127,9 +143,24 @@ export class GitService {
     try {
       const base = this.parseRef(baseRef);
       const compare = this.parseRef(compareRef);
-      const diffSummary = await this.git.diffSummary([`${base}...${compare}`]);
 
-      return diffSummary.files.map((file) => ({
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise<any>((_, reject) => {
+        setTimeout(
+          () =>
+            reject(
+              new Error(
+                "Git diff summary operation timed out after 30 seconds",
+              ),
+            ),
+          30000,
+        );
+      });
+
+      const diffPromise = this.git.diffSummary([`${base}...${compare}`]);
+      const diffSummary = await Promise.race([diffPromise, timeoutPromise]);
+
+      return diffSummary.files.map((file: any) => ({
         path: file.file,
         status: this.getFileStatus(file),
         additions: ("insertions" in file ? file.insertions : 0) || 0,
@@ -137,7 +168,7 @@ export class GitService {
       }));
     } catch (error) {
       console.error("Error getting diff files:", error);
-      return [];
+      throw error; // Re-throw to handle in extension
     }
   }
 
@@ -218,8 +249,20 @@ export class GitService {
     }>
   > {
     try {
-      // Use git status --short for more efficient parsing
-      const shortStatus = await this.git.raw(["status", "--short"]);
+      // Add timeout for git status
+      const timeoutPromise = new Promise<string>((_, reject) => {
+        setTimeout(
+          () =>
+            reject(
+              new Error("Git status operation timed out after 30 seconds"),
+            ),
+          30000,
+        );
+      });
+
+      const statusPromise = this.git.raw(["status", "--short"]);
+      const shortStatus = await Promise.race([statusPromise, timeoutPromise]);
+
       const files: Array<{
         path: string;
         status: string;
@@ -272,15 +315,30 @@ export class GitService {
       return files;
     } catch (error) {
       console.error("Error getting working directory files:", error);
-      return [];
+      throw error; // Re-throw to handle in extension
     }
   }
 
   async getWorkingDirectoryFileDiff(filePath: string): Promise<string> {
     try {
+      // Add timeout for diff operations
+      const timeoutPromise = new Promise<string>((_, reject) => {
+        setTimeout(
+          () =>
+            reject(new Error("Git diff operation timed out after 30 seconds")),
+          30000,
+        );
+      });
+
       // Try to get staged diff first, then unstaged
-      const stagedDiff = await this.git.diff(["--staged", "--", filePath]);
-      const unstagedDiff = await this.git.diff(["--", filePath]);
+      const stagedPromise = this.git.diff(["--staged", "--", filePath]);
+      const stagedDiff = await Promise.race([stagedPromise, timeoutPromise]);
+
+      const unstagedPromise = this.git.diff(["--", filePath]);
+      const unstagedDiff = await Promise.race([
+        unstagedPromise,
+        timeoutPromise,
+      ]);
 
       // Combine both diffs
       let combinedDiff = "";
@@ -295,7 +353,7 @@ export class GitService {
       return combinedDiff;
     } catch (error) {
       console.error("Error getting working directory file diff:", error);
-      return "";
+      throw error; // Re-throw to handle in extension
     }
   }
 

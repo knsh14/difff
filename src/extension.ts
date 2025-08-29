@@ -303,8 +303,37 @@ export function activate(context: vscode.ExtensionContext) {
               async (message) => {
                 try {
                   if (message.command === "reload") {
-                    // Refresh with fresh data from git
-                    await refreshWebviewContent(true);
+                    try {
+                      // Show progress notification
+                      await vscode.window.withProgress(
+                        {
+                          location: vscode.ProgressLocation.Notification,
+                          title: "Reloading diff...",
+                          cancellable: false,
+                        },
+                        async () => {
+                          // Refresh with fresh data from git
+                          await refreshWebviewContent(true);
+                        },
+                      );
+
+                      // Send success message to reset button
+                      panel.webview.postMessage({
+                        command: "reloadComplete",
+                        success: true,
+                      });
+                    } catch (reloadError: any) {
+                      // Send error message to reset button
+                      panel.webview.postMessage({
+                        command: "reloadComplete",
+                        success: false,
+                        error: reloadError.message,
+                      });
+
+                      vscode.window.showErrorMessage(
+                        `Failed to reload diff: ${reloadError.message}`,
+                      );
+                    }
                   } else if (message.command === "addComment") {
                     const baseRef =
                       mode === "working"
@@ -351,22 +380,15 @@ export function activate(context: vscode.ExtensionContext) {
                         ? "working"
                         : diffExplorerProvider.getCompareRef();
 
-                    const formattedComments =
-                      commentService.copyCommentsToClipboard(
-                        baseRef,
-                        compareRef,
-                      );
+                    const comments = commentService.copyCommentsToClipboard(
+                      baseRef,
+                      compareRef,
+                    );
 
-                    if (formattedComments) {
-                      await vscode.env.clipboard.writeText(formattedComments);
-                      vscode.window.showInformationMessage(
-                        `Copied ${formattedComments.split("\n").length} comments to clipboard`,
-                      );
-                    } else {
-                      vscode.window.showInformationMessage(
-                        "No comments found to copy",
-                      );
-                    }
+                    await vscode.env.clipboard.writeText(comments);
+                    vscode.window.showInformationMessage(
+                      "Comments copied to clipboard!",
+                    );
                   }
                 } catch (error: any) {
                   vscode.window.showErrorMessage(

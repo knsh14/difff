@@ -253,15 +253,22 @@ export class DiffWebviewProvider {
   }
 
   getAllDiffsContent(
-    fileDiffs: FileDiff[],
-    baseRef: string,
-    compareRef: string,
-    comments: Map<string, DiffComment[]> = new Map(),
-    currentUser?: string,
+    fileDiffs: Array<{
+      path: string;
+      content: string;
+      additions: number;
+      deletions: number;
+    }>,
+    baseRef?: string,
+    compareRef?: string,
+    comments: Map<string, any[]> = new Map(),
+    currentUser: string = "User",
   ): string {
+    const title =
+      baseRef && compareRef ? `${baseRef} → ${compareRef}` : "Diff View";
     return this.generateDiffHTML(
       fileDiffs,
-      `${baseRef} → ${compareRef}`,
+      title,
       baseRef,
       compareRef,
       comments,
@@ -1202,10 +1209,30 @@ export class DiffWebviewProvider {
             }
         }
 
-        // Listen for messages from extension (mainly for future extensibility)
+        // Listen for messages from extension
         window.addEventListener('message', event => {
             const message = event.data;
-            // Note: Both manual reload and comment operations now regenerate HTML directly in extension
+            
+            // Handle reload completion message
+            if (message.command === 'reloadComplete') {
+                const reloadBtn = document.getElementById('reload-diff-btn');
+                if (reloadBtn) {
+                    reloadBtn.classList.remove('loading');
+                    
+                    if (message.success) {
+                        // Successfully reloaded - reset button
+                        reloadBtn.innerHTML = '<span>↻</span><span>Reload</span>';
+                    } else {
+                        // Error during reload - show error state
+                        reloadBtn.innerHTML = '<span>↻</span><span>Reload Failed</span>';
+                        
+                        // Reset to normal state after 3 seconds
+                        setTimeout(() => {
+                            reloadBtn.innerHTML = '<span>↻</span><span>Reload</span>';
+                        }, 3000);
+                    }
+                }
+            }
         });
     </script>
 </body>
