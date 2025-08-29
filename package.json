@@ -35,6 +35,12 @@
           "name": "Comments",
           "icon": "$(comment-discussion)",
           "contextualTitle": "Comment Management"
+        },
+        {
+          "id": "difff.templates",
+          "name": "Comment Templates",
+          "icon": "$(file-code)",
+          "contextualTitle": "Comment Copy Templates"
         }
       ]
     },
@@ -75,6 +81,31 @@
         "command": "difff.refreshComments",
         "title": "Refresh Comments",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "difff.selectTemplate",
+        "title": "Select Comment Template",
+        "icon": "$(check)"
+      },
+      {
+        "command": "difff.createTemplate",
+        "title": "Create New Template",
+        "icon": "$(add)"
+      },
+      {
+        "command": "difff.editTemplate",
+        "title": "Edit Template",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "difff.deleteTemplate",
+        "title": "Delete Template",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "difff.copyCommentsWithTemplate",
+        "title": "Copy Comments with Template",
+        "icon": "$(copy)"
       }
     ],
     "menus": {
@@ -93,6 +124,16 @@
           "command": "difff.refreshComments",
           "when": "view == difff.comments",
           "group": "navigation@1"
+        },
+        {
+          "command": "difff.selectTemplate",
+          "when": "view == difff.templates",
+          "group": "navigation@1"
+        },
+        {
+          "command": "difff.createTemplate",
+          "when": "view == difff.templates",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
@@ -100,6 +141,16 @@
           "command": "difff.removeAllCommentsForKey",
           "when": "view == difff.comments && viewItem == commentKey",
           "group": "inline@1"
+        },
+        {
+          "command": "difff.editTemplate",
+          "when": "view == difff.templates && viewItem == template",
+          "group": "inline@1"
+        },
+        {
+          "command": "difff.deleteTemplate",
+          "when": "view == difff.templates && viewItem == template",
+          "group": "inline@2"
         }
       ]
     }

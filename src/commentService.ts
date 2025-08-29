@@ -103,7 +103,7 @@ export class CommentService {
   /**
    * Get all comments from storage
    */
-  private getAllComments(): DiffComment[] {
+  getAllComments(): DiffComment[] {
     const stored = this.context.globalState.get<DiffComment[]>(this.storageKey);
     return stored || [];
   }

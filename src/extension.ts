@@ -9,6 +9,10 @@ import { GitService } from "./gitService";
 import { DiffWebviewProvider, FileDiff } from "./webviewProvider";
 import { CommentService } from "./commentService";
 import { CommentExplorerProvider, CommentKey } from "./commentExplorer";
+import {
+  CommentTemplateProvider,
+  CommentTemplateItem,
+} from "./commentTemplateProvider";
 
 export function activate(context: vscode.ExtensionContext) {
   // Check if we're in a git repository
@@ -37,6 +41,10 @@ export function activate(context: vscode.ExtensionContext) {
     commentService,
     gitService,
   );
+  const commentTemplateProvider = new CommentTemplateProvider(
+    context,
+    commentService,
+  );
 
   vscode.window.registerTreeDataProvider(
     "difff.explorer",
@@ -45,6 +53,10 @@ export function activate(context: vscode.ExtensionContext) {
   vscode.window.registerTreeDataProvider(
     "difff.comments",
     commentExplorerProvider,
+  );
+  vscode.window.registerTreeDataProvider(
+    "difff.templates",
+    commentTemplateProvider,
   );
 
   const selectModeCommand = vscode.commands.registerCommand(
@@ -354,7 +366,7 @@ export function activate(context: vscode.ExtensionContext) {
                     );
 
                     // Regenerate webview content instead of reloading
-                    refreshWebviewContent();
+                    await refreshWebviewContent();
                     // Refresh comment explorer
                     commentExplorerProvider.refresh();
                   } else if (message.command === "editComment") {
@@ -362,14 +374,43 @@ export function activate(context: vscode.ExtensionContext) {
                       message.commentId,
                       message.content,
                     );
-                    refreshWebviewContent();
+                    await refreshWebviewContent();
                     // Refresh comment explorer
                     commentExplorerProvider.refresh();
                   } else if (message.command === "deleteComment") {
-                    commentService.deleteComment(message.commentId);
-                    refreshWebviewContent();
-                    // Refresh comment explorer
-                    commentExplorerProvider.refresh();
+                    const deleted = commentService.deleteComment(
+                      message.commentId,
+                    );
+                    if (deleted) {
+                      // Send immediate feedback to webview before refresh
+                      panel.webview.postMessage({
+                        command: "commentDeleted",
+                        commentId: message.commentId,
+                      });
+
+                      // Then refresh the content and sidebar
+                      await refreshWebviewContent();
+                      commentExplorerProvider.refresh();
+
+                      vscode.window.showInformationMessage(
+                        "Comment deleted successfully",
+                      );
+                    } else {
+                      vscode.window.showErrorMessage(
+                        "Failed to delete comment - comment not found",
+                      );
+                    }
+                  } else if (message.command === "copySingleComment") {
+                    const comment = message.comment;
+                    const formattedComment =
+                      commentTemplateProvider.formatComment(comment);
+
+                    await vscode.env.clipboard.writeText(formattedComment);
+                    const template =
+                      commentTemplateProvider.getActiveTemplate();
+                    vscode.window.showInformationMessage(
+                      `Comment copied using "${template?.name || "default"}" template!`,
+                    );
                   } else if (message.command === "copyComments") {
                     const baseRef =
                       mode === "working"
@@ -380,14 +421,17 @@ export function activate(context: vscode.ExtensionContext) {
                         ? "working"
                         : diffExplorerProvider.getCompareRef();
 
-                    const comments = commentService.copyCommentsToClipboard(
-                      baseRef,
-                      compareRef,
-                    );
+                    const comments =
+                      commentTemplateProvider.copyCommentsWithTemplate(
+                        baseRef,
+                        compareRef,
+                      );
 
                     await vscode.env.clipboard.writeText(comments);
+                    const template =
+                      commentTemplateProvider.getActiveTemplate();
                     vscode.window.showInformationMessage(
-                      "Comments copied to clipboard!",
+                      `Comments copied to clipboard using "${template?.name || "default"}" template!`,
                     );
                   }
                 } catch (error: any) {
@@ -511,7 +555,7 @@ export function activate(context: vscode.ExtensionContext) {
             };
 
             // Initial content load
-            refreshWebviewContent();
+            await refreshWebviewContent();
           } catch (error: any) {
             vscode.window.showErrorMessage(
               `Failed to load diffs: ${error.message}`,
@@ -581,6 +625,116 @@ export function activate(context: vscode.ExtensionContext) {
     },
   );
 
+  const selectTemplateCommand = vscode.commands.registerCommand(
+    "difff.selectTemplate",
+    async (item?: CommentTemplateItem) => {
+      if (item) {
+        commentTemplateProvider.setActiveTemplate(item.template.id);
+        vscode.window.showInformationMessage(
+          `Template "${item.template.name}" is now active`,
+        );
+      } else {
+        await commentTemplateProvider.showTemplateQuickPick();
+      }
+    },
+  );
+
+  const createTemplateCommand = vscode.commands.registerCommand(
+    "difff.createTemplate",
+    async () => {
+      await commentTemplateProvider.createNewTemplate();
+    },
+  );
+
+  const editTemplateCommand = vscode.commands.registerCommand(
+    "difff.editTemplate",
+    async (item: CommentTemplateItem) => {
+      const newName = await vscode.window.showInputBox({
+        prompt: "Enter new template name",
+        value: item.template.name,
+      });
+
+      if (!newName) return;
+
+      const newTemplate = await vscode.window.showInputBox({
+        prompt: "Enter new template format",
+        value: item.template.template,
+        validateInput: (value) => {
+          if (!value) return "Template cannot be empty";
+          return null;
+        },
+      });
+
+      if (!newTemplate) return;
+
+      commentTemplateProvider.editTemplate(
+        item.template.id,
+        newName,
+        newTemplate,
+      );
+      vscode.window.showInformationMessage(`Template "${newName}" updated`);
+    },
+  );
+
+  const deleteTemplateCommand = vscode.commands.registerCommand(
+    "difff.deleteTemplate",
+    async (item: CommentTemplateItem) => {
+      const confirmation = await vscode.window.showWarningMessage(
+        `Are you sure you want to delete template "${item.template.name}"?`,
+        { modal: true },
+        "Delete",
+        "Cancel",
+      );
+
+      if (confirmation === "Delete") {
+        commentTemplateProvider.deleteTemplate(item.template.id);
+        vscode.window.showInformationMessage(
+          `Template "${item.template.name}" deleted`,
+        );
+      }
+    },
+  );
+
+  const copyCommentsWithTemplateCommand = vscode.commands.registerCommand(
+    "difff.copyCommentsWithTemplate",
+    async () => {
+      const mode = diffExplorerProvider.getMode();
+      let baseRef: string | undefined;
+      let compareRef: string | undefined;
+
+      if (mode === "working") {
+        baseRef = await gitService.getCurrentCommitHash();
+        compareRef = "working";
+      } else {
+        baseRef = diffExplorerProvider.getBaseRef();
+        compareRef = diffExplorerProvider.getCompareRef();
+      }
+
+      if (!baseRef || !compareRef) {
+        vscode.window.showErrorMessage(
+          "Please select branches or set working directory mode first",
+        );
+        return;
+      }
+
+      const comments = commentTemplateProvider.copyCommentsWithTemplate(
+        baseRef,
+        compareRef,
+      );
+
+      if (!comments) {
+        vscode.window.showInformationMessage("No comments to copy");
+        return;
+      }
+
+      await vscode.env.clipboard.writeText(comments);
+      const template = commentTemplateProvider.getActiveTemplate();
+      vscode.window.showInformationMessage(
+        `Comments copied to clipboard using "${template?.name || "default"}" template!`,
+      );
+    },
+  );
+
   context.subscriptions.push(
     selectModeCommand,
     selectBranchesCommand,
@@ -590,6 +744,11 @@ export function activate(context: vscode.ExtensionContext) {
     jumpToCommentCommand,
     removeAllCommentsForKeyCommand,
     refreshCommentsCommand,
+    selectTemplateCommand,
+    createTemplateCommand,
+    editTemplateCommand,
+    deleteTemplateCommand,
+    copyCommentsWithTemplateCommand,
   );
 }
 
