@@ -314,7 +314,33 @@ export function activate(context: vscode.ExtensionContext) {
             panel.webview.onDidReceiveMessage(
               async (message) => {
                 try {
-                  if (message.command === "reload") {
+                  if (message.command === "openFile") {
+                    // Open the file in the editor
+                    const filePath = message.filePath;
+                    if (!filePath) return;
+
+                    const workspaceFolder =
+                      vscode.workspace.workspaceFolders?.[0];
+                    if (!workspaceFolder) return;
+
+                    const fileUri = vscode.Uri.joinPath(
+                      workspaceFolder.uri,
+                      filePath,
+                    );
+
+                    try {
+                      const document =
+                        await vscode.workspace.openTextDocument(fileUri);
+                      await vscode.window.showTextDocument(document, {
+                        viewColumn: vscode.ViewColumn.Beside,
+                        preserveFocus: false,
+                      });
+                    } catch (error: any) {
+                      vscode.window.showErrorMessage(
+                        `Failed to open file: ${error.message}`,
+                      );
+                    }
+                  } else if (message.command === "reload") {
                     try {
                       // Show progress notification
                       await vscode.window.withProgress(

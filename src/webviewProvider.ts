@@ -382,6 +382,16 @@ export class DiffWebviewProvider {
             font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
         }
 
+        .file-header-title {
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .file-header-title:hover {
+            color: var(--vscode-textLink-foreground);
+            text-decoration: underline;
+        }
+
         .file-stats {
             display: flex;
             gap: 8px;
@@ -440,29 +450,47 @@ export class DiffWebviewProvider {
             display: flex;
             justify-content: flex-end;
             align-items: center;
+            min-height: 22px;
         }
 
         .add-comment-button {
             position: absolute;
-            left: 2px;
-            top: 50%;
-            transform: translateY(-50%);
-            background-color: var(--vscode-button-background);
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: transparent;
             color: var(--vscode-button-foreground);
             border: none;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s, background-color 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1;
+        }
+        
+        /* Show a visual indicator on hover */
+        .add-comment-button::before {
+            content: '+';
+            background-color: var(--vscode-button-background);
             border-radius: 3px;
             width: 18px;
             height: 18px;
             font-size: 11px;
-            cursor: pointer;
-            opacity: 0;
-            transition: opacity 0.2s;
             display: flex;
             align-items: center;
             justify-content: center;
+            position: absolute;
+            left: 4px;
         }
 
         .add-comment-button:hover {
+            background-color: var(--vscode-list-hoverBackground);
+        }
+        
+        .add-comment-button:hover::before {
             background-color: var(--vscode-button-hoverBackground);
         }
 
@@ -771,7 +799,26 @@ export class DiffWebviewProvider {
 
         // Initialize event listeners
         function initializeEventListeners() {
-            // Event listeners are set up through event delegation below
+            // Add event listener for file links in navigation
+            document.querySelectorAll('.file-link').forEach(link => {
+                link.addEventListener('click', (e) => {
+                    // Allow default scroll behavior but also open file
+                    const filePath = link.dataset.filePath;
+                    if (filePath) {
+                        vscode.postMessage({ command: 'openFile', filePath: filePath });
+                    }
+                });
+            });
+
+            // Add event listener for file headers
+            document.querySelectorAll('.file-header-title').forEach(header => {
+                header.addEventListener('click', (e) => {
+                    const filePath = header.dataset.filePath;
+                    if (filePath) {
+                        vscode.postMessage({ command: 'openFile', filePath: filePath });
+                    }
+                });
+            });
         }
 
         // Set up event listeners when DOM is ready
@@ -1322,7 +1369,17 @@ export class DiffWebviewProvider {
             font-weight: 600;
             font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
         }
-        
+
+        .file-header-title {
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .file-header-title:hover {
+            color: var(--vscode-textLink-foreground);
+            text-decoration: underline;
+        }
+
         .file-stats {
             display: flex;
             gap: 12px;
@@ -1409,25 +1466,41 @@ export class DiffWebviewProvider {
             position: relative;
         }
 
+        /* Expand the clickable area for line numbers */
+        .diff-line-wrapper {
+            position: relative;
+            min-height: 22px;
+        }
+
         .add-comment-button {
             position: absolute;
-            left: -24px;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 18px;
-            height: 18px;
-            background: var(--vscode-button-background);
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: transparent;
             color: var(--vscode-button-foreground);
             border: none;
-            border-radius: 50%;
             cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s, background-color 0.2s;
+            display: flex;
+            align-items: center;
+            padding-left: 4px;
+            z-index: 10;
+        }
+        
+        /* Show a visual indicator on hover */
+        .add-comment-button::before {
+            content: '+';
+            background: var(--vscode-button-background);
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
             font-size: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
-            opacity: 0;
-            transition: opacity 0.2s;
-            z-index: 10;
         }
 
         .diff-line:hover .add-comment-button {
@@ -1435,8 +1508,12 @@ export class DiffWebviewProvider {
         }
 
         .add-comment-button:hover {
+            background-color: var(--vscode-list-hoverBackground);
+        }
+        
+        .add-comment-button:hover::before {
             background: var(--vscode-button-hoverBackground);
-            transform: translateY(-50%) scale(1.1);
+            transform: scale(1.1);
         }
 
         .comment-thread-container {
@@ -1752,7 +1829,10 @@ export class DiffWebviewProvider {
         ${fileDiffs
           .map(
             (file) => `
-            <a href="#file-${this.escapeHtml(file.path.replace(/[^a-zA-Z0-9]/g, "-"))}" class="file-link">
+            <a href="#file-${this.escapeHtml(file.path.replace(/[^a-zA-Z0-9]/g, "-"))}"
+               class="file-link"
+               data-file-path="${this.escapeHtml(file.path)}"
+               title="Click to open in editor">
                 ${this.escapeHtml(file.path)}
                 <span class="file-stats">
                     <span class="additions">+${file.additions}</span>
@@ -1797,6 +1877,21 @@ export class DiffWebviewProvider {
                     const target = document.querySelector(link.getAttribute('href'));
                     if (target) {
                         target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                    // Also open the file in editor
+                    const filePath = link.dataset.filePath;
+                    if (filePath) {
+                        vscode.postMessage({ command: 'openFile', filePath: filePath });
+                    }
+                });
+            });
+
+            // Add event listener for file headers
+            document.querySelectorAll('.file-header-title').forEach(header => {
+                header.addEventListener('click', (e) => {
+                    const filePath = header.dataset.filePath;
+                    if (filePath) {
+                        vscode.postMessage({ command: 'openFile', filePath: filePath });
                     }
                 });
             });
@@ -2189,7 +2284,7 @@ export class DiffWebviewProvider {
     return `
         <div class="file-diff" id="file-${this.escapeHtml(fileId)}">
             <div class="file-header">
-                <h2>${this.escapeHtml(file.path)}</h2>
+                <h2 class="file-header-title" data-file-path="${this.escapeHtml(file.path)}" title="Click to open in editor">${this.escapeHtml(file.path)}</h2>
                 <div class="file-stats">
                     <span class="additions">+${file.additions}</span>
                     <span class="deletions">-${file.deletions}</span>
